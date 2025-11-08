@@ -36,29 +36,53 @@ const studentSchema = new mongoose.Schema({
   roll: String,
   branch: String,
 });
-
-const eventSchema = new mongoose.Schema({
-  title: String,
-  branch: String,
-  date: String,
-  venue: String,
-  description: String,
-  type: String,
-
-  proposedBy: String,
-  proposedRole: String,
-
-  status: { type: String, default: "Pending" },
-
-  // in-app registration form schema
-  formSchema: { type: Array, default: [] },
-
-  // optional legacy external link
-  formLink: String,
-
-  createdAt: { type: Date, default: Date.now }
+const winnerSchema = new mongoose.Schema({
+  rank: { type: Number, required: true },
+  name: { type: String, required: true },
+  roll: { type: String, default: "" },
 });
 
+const eventSchema = new mongoose.Schema({
+  title: { type: String, required: true },
+  branch: { type: String, default: "All" },
+  date: { type: String },
+  closeDate: { type: String }, // registration closes after this date
+
+  venue: { type: String },
+  description: { type: String },
+  type: { type: String, default: "General" },
+
+  proposedBy: { type: String, required: true },
+  proposedRole: { type: String, default: "Faculty" },
+
+  status: {
+    type: String,
+    enum: ["Pending", "Approved", "Rejected"],
+    default: "Pending",
+  },
+  approvedBy: { type: String, default: null },
+  approvedAt: { type: Date, default: null },
+  rejectionReason: { type: String, default: null },
+
+  formSchema: { type: Array, default: [] },
+  formLink: { type: String, default: "" },
+
+  // ✅ Results field
+  results: {
+    type: [winnerSchema],
+    default: [],
+  },
+
+  createdAt: { type: Date, default: Date.now },
+  updatedAt: { type: Date, default: Date.now },
+});
+
+eventSchema.pre("save", function (next) {
+  this.updatedAt = new Date();
+  next();
+});
+
+// ✅ Keep this single definition only
 const Admin = mongoose.model("Admin", adminSchema, "admin");
 const Faculty = mongoose.model("Faculty", facultySchema, "faculty");
 const Coordinator = mongoose.model("Coordinator", coordinatorSchema, "coordinator");
@@ -185,10 +209,79 @@ app.post("/student/register", async (req, res) => {
 
 // Public: student login (plaintext compare - dev)
 app.post("/student/login", async (req, res) => login(Student, req, res, "Student"));
+// Approve event
+app.put("/admin/approve/:id", async (req, res) => {
+  try {
+    const event = await Event.findByIdAndUpdate(
+      req.params.id,
+      { status: "approved" },
+      { new: true }
+    );
+    res.json({ message: "Event approved successfully", event });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Reject event
+app.put("/admin/reject/:id", async (req, res) => {
+  try {
+    const event = await Event.findByIdAndUpdate(
+      req.params.id,
+      { status: "rejected" },
+      { new: true }
+    );
+    res.json({ message: "Event rejected", event });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
 // ======= EVENTS API =======
 
 // CREATE/ADD EVENT (protected) - Faculty/Admin/Coordinator
+// routes/events.js or server.js
+
+app.post("/events/:id/results", async (req, res) => {
+  try {
+    const { winners } = req.body;
+
+    console.log("📩 /events/:id/results request body:", winners);
+    console.log("📩 Event ID:", req.params.id);
+
+    if (!Array.isArray(winners) || winners.length === 0) {
+      console.warn("⚠️ Winners array missing or empty");
+      return res.status(400).json({ message: "Winners array is required" });
+    }
+
+    const event = await Event.findById(req.params.id);
+    if (!event) {
+      console.warn("⚠️ Event not found:", req.params.id);
+      return res.status(404).json({ message: "Event not found" });
+    }
+
+    // Debug current results
+    console.log("📋 Existing event results:", event.results);
+
+    // Save top 5
+    event.results = winners.slice(0, 5);
+    console.log("✅ New results to save:", event.results);
+
+    await event.save();
+
+    res.json({ message: "Results added successfully", event });
+  } catch (err) {
+    console.error("❌ Error saving results:", err);
+    res.status(500).json({
+      message: "Server error saving results",
+      error: err.message || err,
+      stack: err.stack,
+    });
+  }
+});
+
+
+
 app.post("/events/add", verifyToken, requireAnyRole(["Faculty","Admin","Coordinator"]), async (req, res) => {
   try {
     console.log("[/events/add] incoming request from user:", req.user?.username, "role:", req.user?.role);

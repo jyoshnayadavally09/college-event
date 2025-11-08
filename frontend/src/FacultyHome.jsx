@@ -510,6 +510,10 @@ export default function FacultyHome() {
             </div>
 
             <div className="actions">
+              <button className="btn quick" onClick={() => navigate("/faculty-results")}>
+  🏆 Results
+</button>
+
               <button className="btn create" onClick={() => navigate("/new-event")}>+ Create Event</button>
               <button className="btn quick" onClick={handleCreateAndEdit}>+ Quick Create</button>
               <button className="logout" onClick={handleLogout}>Logout</button>

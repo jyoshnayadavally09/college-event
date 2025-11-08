@@ -19,13 +19,25 @@ export default function StudentHome() {
     try {
       const res = await fetch("http://localhost:5000/events");
       const data = await res.json();
+
       if (!Array.isArray(data)) return;
+
+      // ✅ Filter only approved events with forms (either formSchema or formLink)
+      const filtered = data.filter(
+        (ev) =>
+          ev.status?.toLowerCase() === "approved" &&
+          ((ev.formSchema && ev.formSchema.length > 0) ||
+            (ev.formLink && ev.formLink.trim() !== ""))
+      );
+
+      // ✅ Add registration status
       const withStatus = await Promise.all(
-        data.map(async (ev) => {
+        filtered.map(async (ev) => {
           const status = await checkRegistration(ev._id);
           return { ...ev, registered: status.registered };
         })
       );
+
       setEvents(withStatus);
     } catch (err) {
       console.error("Error loading events:", err);
@@ -51,13 +63,10 @@ export default function StudentHome() {
     }
   };
 
-  // 🟩 Updated Register Handler
   const handleRegister = (ev) => {
     if (ev.formSchema && ev.formSchema.length > 0) {
-      // Faculty provided an in-app form
       navigate(`/student/event-form/${ev._id}`);
     } else if (ev.formLink && ev.formLink.trim() !== "") {
-      // External Google Form or similar
       window.open(ev.formLink, "_blank", "noopener,noreferrer");
     } else {
       alert("No registration form available for this event. Contact the organizer.");
@@ -223,41 +232,83 @@ export default function StudentHome() {
         <div className="event-list">
           {events.length === 0 ? (
             <div style={{ textAlign: "center", color: "var(--muted)", padding: 20 }}>
-              No events available at the moment.
+              No active events available for registration.
             </div>
           ) : (
-            events.map((ev) => (
-              <div key={ev._id} className="event-card">
-                <div>
-                  <div className="event-title">{ev.title}</div>
-                  <div className="event-meta">
-                    📅 {ev.date || "Date: TBA"} <br />
-                    📍 {ev.venue || "Venue: TBA"} <br />
-                    🏷️ Type: {ev.type || "Individual"}
-                  </div>
-                  <div className="event-desc">
-                    {ev.description || "No description provided."}
-                  </div>
-                </div>
+            events.map((ev) => {
+              const today = new Date();
+              today.setHours(0, 0, 0, 0); // normalize today's date
+              const closeDate = ev.closeDate ? new Date(ev.closeDate) : null;
+              if (closeDate) closeDate.setHours(0, 0, 0, 0);
+              
+              // ✅ Closed if no closeDate, or closeDate <= today
+              const isClosed = !closeDate || closeDate <= today;
 
-                <div className="btn-group">
-                  {ev.registered ? (
-                    <button className="registered-btn" disabled>
-                      ✅ Registered
-                    </button>
-                  ) : (
-                    <button
-                      className="register-btn"
-                      onClick={() => handleRegister(ev)}
-                    >
-                      {ev.formSchema && ev.formSchema.length > 0
-                        ? "Fill Form"
-                        : "Register"}
-                    </button>
-                  )}
+              return (
+                <div key={ev._id} className="event-card">
+                  <div>
+                    <div className="event-title">{ev.title}</div>
+                    <div className="event-meta">
+                      📅 {ev.date || "Date: TBA"} <br />
+                      📅 {ev.closeDate || "Closing date: Not disclosed"} <br />
+                      📍 {ev.venue || "Venue: TBA"} <br />
+                      🏷️ Type: {ev.type || "Individual"}
+                    </div>
+                    <div className="event-desc">
+                      {ev.description || "No description provided."}
+                    </div>
+
+                    {ev.results && ev.results.length > 0 && (
+                      <div
+                        style={{
+                          background: "#f0fdf4",
+                          border: "1px solid #bbf7d0",
+                          borderRadius: 8,
+                          padding: "8px 10px",
+                          marginTop: 10,
+                        }}
+                      >
+                        <div style={{ fontWeight: 700, color: "#166534" }}>🏆 Winners</div>
+                        <ul
+                          style={{
+                            marginTop: 6,
+                            paddingLeft: 16,
+                            color: "#065f46",
+                            fontSize: 14,
+                          }}
+                        >
+                          {ev.results.slice(0, 5).map((w) => (
+                            <li key={w.rank}>
+                              #{w.rank}: {w.name} {w.roll ? `(${w.roll})` : ""}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="btn-group">
+                    {ev.registered ? (
+                      <button className="registered-btn" disabled>
+                        ✅ Registered
+                      </button>
+                    ) : isClosed ? (
+                      <button
+                        className="register-btn"
+                        disabled
+                        style={{ background: "#9ca3af", cursor: "not-allowed" }}
+                      >
+                        ❌ Registration Closed
+                      </button>
+                    ) : (
+                      <button className="register-btn" onClick={() => handleRegister(ev)}>
+                        Register
+                      </button>
+                    )}
+                  </div>
                 </div>
-              </div>
-            ))
+              );
+            })
           )}
         </div>
 

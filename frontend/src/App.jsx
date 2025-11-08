@@ -21,6 +21,7 @@ import EventDetails from "./EventDetails";
 import StudentLogin from "./StudentLogin";
 import StudentRegister from "./StudentRegister";
 import StudentEventForm from "./StudentEventForm";
+import FacultyResults from "./FacultyResults";
 
 export default function App() {
   return (
@@ -36,6 +37,7 @@ export default function App() {
         {/* 👩‍🏫 Faculty Routes */}
         <Route path="/faculty-login" element={<FacultyLogin />} />
         <Route path="/faculty-home" element={<FacultyHome />} /> 
+         <Route path="/faculty-results" element={<FacultyResults/>} /> 
         <Route path="/new-event" element={<NewEvent />} />
 
         {/* 👨‍🏫 Coordinator Routes */}

@@ -8,7 +8,7 @@ export default function UniversityRolesPage() {
     if (id === "admin") navigate("/admin-login");
     else if (id === "faculty") navigate("/faculty-login");
     else if (id === "coordinator") navigate("/coordinator-login");
-    else if (id === "student")navigate("/student-login") ;
+    else if (id === "student") navigate("/student-login");
   };
 
   const roles = [
@@ -16,6 +16,45 @@ export default function UniversityRolesPage() {
     { id: "faculty", title: "Faculty", desc: "Organize and oversee events" },
     { id: "coordinator", title: "Coordinator", desc: "Coordinate student activities" },
     { id: "student", title: "Student", desc: "Participate and explore" },
+  ];
+
+  const events = [
+    {
+      title: "Vignan Tech Fest 2024",
+      img: "https://images.unsplash.com/photo-1561489428-cc1e5b6b2e47?auto=format&fit=crop&w=1000&q=80",
+    },
+    {
+      title: "Cultural Carnival 2024",
+      img: "https://images.unsplash.com/photo-1551836022-4c4c79ecde51?auto=format&fit=crop&w=1000&q=80",
+    },
+    {
+      title: "Sports Meet 2024",
+      img: "https://images.unsplash.com/photo-1531058020387-3be344556be6?auto=format&fit=crop&w=1000&q=80",
+    },
+    {
+      title: "Innovation Expo 2024",
+      img: "https://images.unsplash.com/photo-1504384308090-c894fdcc538d?auto=format&fit=crop&w=1000&q=80",
+    },
+    {
+      title: "Hackathon: CodeVignan 2024",
+      img: "https://images.unsplash.com/photo-1519389950473-47ba0277781c?auto=format&fit=crop&w=1000&q=80",
+    },
+    {
+      title: "Green Campus Initiative",
+      img: "https://images.unsplash.com/photo-1501004318641-b39e6451bec6?auto=format&fit=crop&w=1000&q=80",
+    },
+    {
+      title: "Research Conclave 2024",
+      img: "https://images.unsplash.com/photo-1504384308090-c894fdcc538d?auto=format&fit=crop&w=1000&q=80",
+    },
+    {
+      title: "Cultural Night Fiesta",
+      img: "https://images.unsplash.com/photo-1492684223066-81342ee5ff30?auto=format&fit=crop&w=1000&q=80",
+    },
+    {
+      title: "Entrepreneurship Summit",
+      img: "https://images.unsplash.com/photo-1556761175-5973dc0f32e7?auto=format&fit=crop&w=1000&q=80",
+    },
   ];
 
   return (
@@ -31,7 +70,6 @@ export default function UniversityRolesPage() {
           overflow-x: hidden;
         }
 
-        /* NAVBAR */
         .navbar {
           width: 100%;
           padding: 20px 60px;
@@ -68,7 +106,6 @@ export default function UniversityRolesPage() {
           color: #ffd36a;
         }
 
-        /* HERO SECTION */
         .hero {
           height: 100vh;
           width: 100%;
@@ -132,7 +169,6 @@ export default function UniversityRolesPage() {
           background: linear-gradient(90deg, #2575fc, #6a11cb);
         }
 
-        /* LOGIN CARDS */
         .role-cards {
           display: flex;
           flex-wrap: wrap;
@@ -171,7 +207,6 @@ export default function UniversityRolesPage() {
           color: #f1f1f1;
         }
 
-        /* ABOUT SECTION */
         .about {
           padding: 100px 60px;
           display: flex;
@@ -210,7 +245,6 @@ export default function UniversityRolesPage() {
           box-shadow: 0 0 20px rgba(0,0,0,0.2);
         }
 
-        /* EVENTS SECTION */
         .events {
           background: linear-gradient(180deg, #f3f3f3, #fff);
           padding: 100px 60px;
@@ -255,7 +289,6 @@ export default function UniversityRolesPage() {
           color: #333;
         }
 
-        /* FOOTER */
         .footer {
           text-align: center;
           padding: 30px;
@@ -290,7 +323,6 @@ export default function UniversityRolesPage() {
         }
       `}</style>
 
-      {/* NAVBAR */}
       <nav className="navbar">
         <div className="nav-logo">Vignan EventConnect</div>
         <div className="nav-links">
@@ -301,7 +333,6 @@ export default function UniversityRolesPage() {
         </div>
       </nav>
 
-      {/* HERO */}
       <section className="hero" id="home">
         <div className="hero-content">
           <h1 className="hero-title">Discover. Connect. Celebrate.</h1>
@@ -325,7 +356,6 @@ export default function UniversityRolesPage() {
         </div>
       </section>
 
-      {/* ABOUT */}
       <section className="about" id="about">
         <div className="about-text">
           <h2>About Vignan</h2>
@@ -344,26 +374,18 @@ export default function UniversityRolesPage() {
         </div>
       </section>
 
-      {/* EVENTS */}
       <section className="events" id="events">
         <h2>Previous Events</h2>
         <div className="event-cards">
-          <div className="event-card">
-            <img src="https://images.unsplash.com/photo-1561489428-cc1e5b6b2e47?auto=format&fit=crop&w=1000&q=80" alt="Tech Fest" />
-            <h3>Vignan Tech Fest 2024</h3>
-          </div>
-          <div className="event-card">
-            <img src="https://images.unsplash.com/photo-1551836022-4c4c79ecde51?auto=format&fit=crop&w=1000&q=80" alt="Cultural Fest" />
-            <h3>Cultural Carnival 2024</h3>
-          </div>
-          <div className="event-card">
-            <img src="https://images.unsplash.com/photo-1531058020387-3be344556be6?auto=format&fit=crop&w=1000&q=80" alt="Sports Meet" />
-            <h3>Sports Meet 2024</h3>
-          </div>
+          {events.map((event, index) => (
+            <div key={index} className="event-card">
+              <img src={event.img} alt={event.title} />
+              <h3>{event.title}</h3>
+            </div>
+          ))}
         </div>
       </section>
 
-      {/* FOOTER */}
       <footer className="footer">
         © 2025 Vignan EventConnect. All Rights Reserved.
       </footer>
