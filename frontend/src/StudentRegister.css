@@ -13,12 +13,13 @@
 body { font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial; }
 
 .sr-wrapper {
-  padding: 28px 16px;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(180deg, rgba(11,61,145,0.03), rgba(11,61,145,0.00));
-  min-height: 100%;
+  min-height: 100vh;
+  padding: 28px 16px;
+  background: linear-gradient(180deg, rgba(11,61,145,0.05), rgba(11,61,145,0.00));
+  transform: translateX(450px); /* move it 120px to the right */
 }
 
 .sr-card {

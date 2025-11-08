@@ -119,7 +119,7 @@ export default function AdminLogin() {
             </div>
 
             <button type="submit" style={styles.button} disabled={loading}>
-              {loading ? <span style={styles.spinner} /> : "Sign In"}
+              {loading ? <span style={styles.spinner} /> : "login"}
             </button>
 
             {message.text && (

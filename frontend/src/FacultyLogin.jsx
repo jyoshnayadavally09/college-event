@@ -201,13 +201,7 @@ export default function FacultyLogin() {
             color: "#dbeafe",
           }}
         >
-          Need an account?{" "}
-          <span
-            onClick={() => navigate("/faculty-register")}
-            style={{ color: "#7dd3fc", cursor: "pointer", fontWeight: 700 }}
-          >
-            Register here
-          </span>
+         
         </p>
       </div>
     </div>

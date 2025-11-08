@@ -8,6 +8,7 @@ require("dotenv").config();
 const fs = require("fs");
 const path = require("path");
 const XLSX = require("xlsx");
+const { time } = require("console");
 
 const app = express();
 app.use(express.json());
@@ -47,7 +48,7 @@ const eventSchema = new mongoose.Schema({
   branch: { type: String, default: "All" },
   date: { type: String },
   closeDate: { type: String }, // registration closes after this date
-
+  time : { type : String},
   venue: { type: String },
   description: { type: String },
   type: { type: String, default: "General" },
@@ -302,6 +303,21 @@ app.post("/events/add", verifyToken, requireAnyRole(["Faculty","Admin","Coordina
   } catch (err) {
     console.error("[/events/add] error creating event:", err && err.message ? err.message : err);
     return res.status(500).json({ message: "Server error creating event", error: err && err.message ? err.message : undefined });
+  }
+});
+app.put("/events/update-datetime/:id", async (req, res) => {
+  try {
+    const { date, time } = req.body;
+    const event = await Event.findByIdAndUpdate(
+      req.params.id,
+      { date, time },
+      { new: true }
+    );
+    if (!event) return res.status(404).json({ message: "Event not found" });
+    res.json({ message: "Event updated successfully", event });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Server error" });
   }
 });
 

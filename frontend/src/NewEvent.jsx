@@ -191,7 +191,8 @@ export default function NewEvent() {
     title: "",
     branch: "",
     date: "",
-    closeDate: "", // ✅ Added close date
+    closeDate: "",
+    time:"", // ✅ Added close date
     venue: "",
     description: "",
     type: "Individual",
@@ -213,7 +214,7 @@ export default function NewEvent() {
     e.preventDefault();
 
     // 🧠 Validation
-    if (form.closeDate && new Date(form.closeDate) < new Date(form.date)) {
+    if (form.closeDate && new Date(form.closeDate) > new Date(form.date)) {
       alert("⚠️ Close date cannot be before event date!");
       return;
     }
@@ -361,6 +362,13 @@ export default function NewEvent() {
             <input
               type="date"
               name="closeDate"
+              onChange={handleChange}
+              required
+            />
+             <label>Event time</label>
+            <input
+              type="time"
+              name="time"
               onChange={handleChange}
               required
             />

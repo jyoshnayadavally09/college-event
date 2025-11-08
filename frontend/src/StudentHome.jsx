@@ -251,6 +251,7 @@ export default function StudentHome() {
                     <div className="event-meta">
                       📅 {ev.date || "Date: TBA"} <br />
                       📅 {ev.closeDate || "Closing date: Not disclosed"} <br />
+                      ⏰ {ev.time || "time is not allocated" } <br/>
                       📍 {ev.venue || "Venue: TBA"} <br />
                       🏷️ Type: {ev.type || "Individual"}
                     </div>

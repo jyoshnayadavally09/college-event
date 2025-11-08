@@ -382,7 +382,7 @@ export default function FacultyHome() {
         * { box-sizing: border-box; }
         html,body,#root { height:100%; margin:0; background: var(--bg); color:#111827; }
 
-        .wrapper { max-width: 1280px; margin: 18px auto; padding: 12px; }
+        .wrapper { max-width: 1500px; margin: 18px auto; padding: 12px; }
 
         /* Top bar */
         .topbar { display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:14px; }
@@ -621,8 +621,11 @@ export default function FacultyHome() {
                         </div>
 
                         <div style={{ textAlign: "right" }}>
-                          <div style={{ fontSize: 13, color: "var(--muted)" }}>{ev.date || "Date: TBA"}</div>
-                          <div className={statusClass(ev.status)} style={{ marginTop: 8 }}>{ev.status || "Unknown"}</div>
+                         <div style={{ fontSize: 13, color: "var(--muted)" }}>
+  📅 {ev.date || "Date: TBA"} <br />
+  🕒 {ev.time || "Time: TBA"}
+</div>
+
                         </div>
                       </div>
 

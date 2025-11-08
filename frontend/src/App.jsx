@@ -9,19 +9,15 @@ import CoordinatorHome from "./CoordinatorHome";
 import FacultyHome from "./FacultyHome";
 import NewEvent from "./NewEvent";
 import StudentHome from "./StudentHome";
-
-
 import EventFormBuilder from "./EventFormBuilder";
 import EventDetails from "./EventDetails";
-// ...
-
-
-
 // ✅ NEW: Import the student login/register pages
 import StudentLogin from "./StudentLogin";
 import StudentRegister from "./StudentRegister";
 import StudentEventForm from "./StudentEventForm";
 import FacultyResults from "./FacultyResults";
+import AdminCalendar from "./AdminCalendar";
+import EditEvent from "./EditEvent";
 
 export default function App() {
   return (
@@ -51,6 +47,11 @@ export default function App() {
         <Route path="/event-form-builder/:eventId" element={<EventFormBuilder />} />
 <Route path="/event-details/:eventId" element={<EventDetails />} />
 <Route path="/student/event-form/:id" element={<StudentEventForm />} />
+<Route path="/calendar" element={<AdminCalendar />} />
+<Route path="/edit-event/:id" element={<EditEvent />} />
+
+
+
       </Routes>
     </Router>
   );

@@ -1,6 +1,8 @@
 // src/components/AdminHome.jsx
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import EditDateTimeModal from "./EditEvent.jsx";
+
 import {
   PieChart,
   Pie,
@@ -23,6 +25,11 @@ export default function AdminHome() {
   const [search, setSearch] = useState("");
   const [registrationsModalOpen, setRegistrationsModalOpen] = useState(false);
   const [registrations, setRegistrations] = useState([]);
+  const [showEditModal, setShowEditModal] = useState(false);
+const [editingEvent, setEditingEvent] = useState(null);
+const [editDate, setEditDate] = useState("");
+const [editTime, setEditTime] = useState("");
+
   const [regsLoading, setRegsLoading] = useState(false);
   const [regsChartData, setRegsChartData] = useState([]);
   const token = localStorage.getItem("token");
@@ -478,40 +485,106 @@ html, body, #root {
 
         <div className="main">
           <aside className="sidebar">
-            <div className="overview">
-              <div style={{ fontSize: 13, color: "var(--muted)" }}>Overview</div>
-              <div className="big">{counts.total} Events</div>
+  {/* === ORIGINAL OVERVIEW === */}
+  <div className="overview">
+    <div style={{ fontSize: 13, color: "var(--muted)" }}>Overview</div>
+    <div className="big">{counts.total} Events</div>
 
-              <div className="stats" style={{ marginTop: 16 }}>
-                <div
-                  className={`stat status-pending`}
-                  onClick={() => setFilter(filter === "pending" ? "all" : "pending")}
-                  title="Click to filter pending"
-                >
-                  <small>Pending</small>
-                  <strong>{counts.pending}</strong>
-                </div>
-                <div
-                  className={`stat status-approved`}
-                  onClick={() => setFilter(filter === "approved" ? "all" : "approved")}
-                  title="Click to filter approved"
-                >
-                  <small>Approved</small>
-                  <strong>{counts.approved}</strong>
-                </div>
-                <div
-                  className={`stat status-rejected`}
-                  onClick={() => setFilter(filter === "rejected" ? "all" : "rejected")}
-                  title="Click to filter rejected"
-                >
-                  <small>Rejected</small>
-                  <strong>{counts.rejected}</strong>
-                </div>
-              </div>
-            </div>
+    <div className="stats" style={{ marginTop: 16 }}>
+      <div
+        className={`stat status-pending`}
+        onClick={() => setFilter(filter === "pending" ? "all" : "pending")}
+        title="Click to filter pending"
+      >
+        <small>Pending</small>
+        <strong>{counts.pending}</strong>
+      </div>
+      <div
+        className={`stat status-approved`}
+        onClick={() => setFilter(filter === "approved" ? "all" : "approved")}
+        title="Click to filter approved"
+      >
+        <small>Approved</small>
+        <strong>{counts.approved}</strong>
+      </div>
+      <div
+        className={`stat status-rejected`}
+        onClick={() => setFilter(filter === "rejected" ? "all" : "rejected")}
+        title="Click to filter rejected"
+      >
+        <small>Rejected</small>
+        <strong>{counts.rejected}</strong>
+      </div>
+    </div>
+  </div>
 
-            
-          </aside>
+  {/* === MINI CALENDAR OVERVIEW === */}
+  <div
+    className="overview"
+    style={{
+      marginTop: "25px",
+      background: "white",
+      padding: "16px",
+      borderRadius: "10px",
+      boxShadow: "0 4px 12px rgba(0,0,0,0.05)",
+      border: "1px solid #e5e7eb",
+      textAlign: "center",
+    }}
+  >
+    <div style={{ fontSize: 13, color: "var(--muted)" }}>Calendar Overview</div>
+    <div className="big" style={{ color: "#0b3d91" }}>
+      📅 Approved Events
+    </div>
+
+    {/* Simple static mini calendar preview */}
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "repeat(7, 1fr)",
+        gap: "4px",
+        fontSize: "12px",
+        color: "#333",
+        justifyItems: "center",
+        alignItems: "center",
+        marginTop: "12px",
+        marginBottom: "14px",
+      }}
+    >
+      {["S", "M", "T", "W", "T", "F", "S"].map((d) => (
+        <div key={d} style={{ fontWeight: "700", color: "#0b3d91" }}>
+          {d}
+        </div>
+      ))}
+      {[...Array(28)].map((_, i) => (
+        <div
+          key={i}
+          style={{
+            width: "20px",
+            height: "20px",
+            background: i % 5 === 0 ? "#dcfce7" : "#f9fafb", // green = approved days
+            borderRadius: "5px",
+          }}
+        />
+      ))}
+    </div>
+
+    <button
+      onClick={() => navigate("/calendar")}
+      style={{
+        background: "#4f46e5",
+        color: "white",
+        border: "none",
+        padding: "8px 14px",
+        borderRadius: "8px",
+        fontWeight: "600",
+        cursor: "pointer",
+      }}
+    >
+      View Full Calendar
+    </button>
+  </div>
+</aside>
+
 
           <section className="content">
             <div className="controls">
@@ -549,7 +622,13 @@ html, body, #root {
                       </div>
 
                       <div style={{ textAlign: "right" }}>
-                        <div style={{ fontSize: 13, color: "var(--muted)" }}>{ev.date || "Date: TBA"}</div>
+                        <div style={{ fontSize: 13, color: "var(--muted)" }}>
+  📅 {ev.date || "Date: TBA"}{" "}
+  {ev.time ? (
+    <span>⏰ {ev.time }</span>
+  ) : null}
+</div>
+
                         <div className={statusClass(ev.status)} style={{ marginTop: 8 }}>{ev.status || "Unknown"}</div>
                       </div>
                     </div>
@@ -557,41 +636,55 @@ html, body, #root {
                     <div className="desc">{ev.description?.slice(0, 180) || "No description"}</div>
 
                     <div className="footer">
-                      <div className="venue">{ev.venue || "Venue: TBA"}</div>
-                      <div className="btn-group" style={{ justifyContent: "flex-end" }}>
-                        <button
-                          className="btn-small"
-                          onClick={(e) => { e.stopPropagation(); openRegistrationsModal(ev); }}
-                        >
-                          View registrations
-                        </button>
-                        <button
-                          className="btn-small"
-                          onClick={(e) => { e.stopPropagation(); handleExport(ev._id); }}
-                          disabled={exporting}
-                        >
-                          {exporting ? "Exporting..." : "Export CSV"}
-                        </button>
-                        {ev.status?.toLowerCase() === "pending" ? (
-                          <>
-                            <button
-                              className="btn-small"
-                              onClick={(e) => { e.stopPropagation(); updateStatus(ev._id, "Approved"); }}
-                              disabled={updating}
-                            >
-                              Approve
-                            </button>
-                            <button
-                              className="btn-small"
-                              onClick={(e) => { e.stopPropagation(); updateStatus(ev._id, "Rejected"); }}
-                              disabled={updating}
-                            >
-                              Reject
-                            </button>
-                          </>
-                        ) : null}
-                      </div>
-                    </div>
+  <div className="venue">{ev.venue || "Venue: TBA"}</div>
+  <div className="btn-group" style={{ justifyContent: "flex-end" }}>
+    <button
+      className="btn-small"
+      onClick={(e) => { e.stopPropagation(); openRegistrationsModal(ev); }}
+    >
+      View registrations
+    </button>
+    <button
+      className="btn-small"
+      onClick={(e) => { e.stopPropagation(); handleExport(ev._id); }}
+      disabled={exporting}
+    >
+      {exporting ? "Exporting..." : "Export CSV"}
+    </button>
+
+    {/* ✏️ MODIFY BUTTON — ADDED HERE */}
+    <button
+  className="btn-small"
+  style={{ background: "#4f46e5", color: "white" }}
+  onClick={(e) => {
+    e.stopPropagation();
+    navigate(`/edit-event/${ev._id}`);
+  }}
+>
+  🕒 Modify
+</button>
+
+    {ev.status?.toLowerCase() === "pending" ? (
+      <>
+        <button
+          className="btn-small"
+          onClick={(e) => { e.stopPropagation(); updateStatus(ev._id, "Approved"); }}
+          disabled={updating}
+        >
+          Approve
+        </button>
+        <button
+          className="btn-small"
+          onClick={(e) => { e.stopPropagation(); updateStatus(ev._id, "Rejected"); }}
+          disabled={updating}
+        >
+          Reject
+        </button>
+      </>
+    ) : null}
+  </div>
+</div>
+
                   </article>
                 ))
               )}
