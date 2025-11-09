@@ -1,19 +1,14 @@
-// src/components/EventRegisterForm.jsx
 import React, { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
+import { api } from "./api";
 
 /**
- * EventRegisterForm
+ * EventRegisterForm — Unified Student Registration Component
  *
- * Props:
- *   - event: optional. If passed, component uses it. Otherwise it reads eventId from useParams()
- *
- * Behavior:
- *   - If event/formSchema not present, try to fetch event via GET /events and find by id.
- *   - Checks registration status for current student via GET /events/:id/registrations/check (Authorization Bearer token).
- *   - If already registered -> show saved responses (read-only).
- *   - If not registered -> render formSchema, prefill from localStorage.student or /student/profile, POST responses to /events/:id/register.
- *   - On successful register: store localStorage registered_<eventId> marker, navigate to /student-home (so StudentHome instantly reflects status).
+ * ✅ Uses centralized API from api.js (Render safe)
+ * ✅ Handles registration check, fetch, and submission
+ * ✅ Works both with passed event prop OR via useParams
+ * ✅ Gracefully handles already registered state
  */
 
 export default function EventRegisterForm({ event: propEvent }) {
@@ -21,12 +16,10 @@ export default function EventRegisterForm({ event: propEvent }) {
   const navigate = useNavigate();
   const routeEventId = params.eventId;
   const [event, setEvent] = useState(propEvent || null);
-
   const [loadingEvent, setLoadingEvent] = useState(!propEvent && !!routeEventId);
   const [checking, setChecking] = useState(true);
   const [registered, setRegistered] = useState(false);
   const [savedRegistration, setSavedRegistration] = useState(null);
-
   const [values, setValues] = useState({});
   const [submitting, setSubmitting] = useState(false);
   const [statusMsg, setStatusMsg] = useState("");
@@ -34,7 +27,7 @@ export default function EventRegisterForm({ event: propEvent }) {
 
   const token = localStorage.getItem("token");
 
-  // helper: fetch event if not provided
+  /** ✅ Load event if not passed as prop */
   useEffect(() => {
     let mounted = true;
     async function loadEvent() {
@@ -45,14 +38,11 @@ export default function EventRegisterForm({ event: propEvent }) {
       }
       setLoadingEvent(true);
       try {
-        const res = await fetch("http://localhost:5000/events");
-        if (!res.ok) throw new Error(`Failed to fetch events: ${res.status}`);
-        const data = await res.json();
-        const arr = Array.isArray(data) ? data : data?.events ?? [];
-        const ev = arr.find((e) => (e._id ?? e.id) === routeEventId);
-        if (mounted) {
-          setEvent(ev || null);
-        }
+        const allEvents = await api.getEvents(token);
+        const ev = Array.isArray(allEvents)
+          ? allEvents.find((e) => e._id === routeEventId)
+          : allEvents?.events?.find((e) => e._id === routeEventId);
+        if (mounted) setEvent(ev || null);
       } catch (err) {
         console.error("Failed to load event:", err);
         if (mounted) setEvent(null);
@@ -61,71 +51,43 @@ export default function EventRegisterForm({ event: propEvent }) {
       }
     }
     loadEvent();
-    return () => { mounted = false; };
-  }, [propEvent, routeEventId]);
+    return () => {
+      mounted = false;
+    };
+  }, [propEvent, routeEventId, token]);
 
-  // helper: load student snapshot from localStorage or (optionally) refresh from server
+  /** ✅ Get local student profile snapshot */
   const getLocalStudent = async () => {
     try {
       const s = localStorage.getItem("student");
-      if (s) {
-        const parsed = JSON.parse(s);
-        // if missing key details, try profile endpoint
-        const needKeys = ["name", "email", "roll", "branch"];
-        const hasAll = needKeys.every((k) => parsed && parsed[k]);
-        if (!hasAll && token) {
-          try {
-            const res = await fetch("http://localhost:5000/student/profile", {
-              headers: { Authorization: `Bearer ${token}` },
-            });
-            if (res.ok) {
-              const full = await res.json();
-              const merged = { ...parsed, ...full };
-              localStorage.setItem("student", JSON.stringify(merged));
-              return merged;
-            }
-          } catch (e) {
-            // ignore
-          }
-        }
-        return parsed;
-      }
-      // no local student; try token-based profile
-      if (token) {
-        try {
-          const res = await fetch("http://localhost:5000/student/profile", {
-            headers: { Authorization: `Bearer ${token}` },
-          });
-          if (res.ok) {
-            const full = await res.json();
-            localStorage.setItem("student", JSON.stringify(full));
-            return full;
-          }
-        } catch (e) {
-          // ignore
-        }
-      }
+      if (s) return JSON.parse(s);
       return null;
-    } catch (err) {
+    } catch {
       return null;
     }
   };
 
-  // initialize values from event.formSchema and prefill with local student if possible
+  /** ✅ Prefill form from student details */
   useEffect(() => {
     if (!event) return;
     const init = {};
     const s = JSON.parse(localStorage.getItem("student") || "null");
     (event.formSchema || []).forEach((f) => {
-      // allow common keys: id, label. Prefill from student snapshot if possible.
       const key = f.id;
       if (f.type === "checkbox") init[key] = [];
-      else init[key] = (s && (s[key] ?? s[key.toLowerCase()] ?? s[key.toUpperCase()] ?? "")) || "";
+      else
+        init[key] =
+          (s &&
+            (s[key] ??
+              s[key?.toLowerCase()] ??
+              s[key?.toUpperCase()] ??
+              "")) ||
+          "";
     });
     setValues(init);
   }, [event]);
 
-  // check if student already registered (via token)
+  /** ✅ Check if already registered */
   useEffect(() => {
     let mounted = true;
     (async () => {
@@ -133,33 +95,28 @@ export default function EventRegisterForm({ event: propEvent }) {
         setChecking(false);
         return;
       }
-
       setChecking(true);
       try {
-        const headers = token ? { Authorization: `Bearer ${token}` } : {};
-        const res = await fetch(`http://localhost:5000/events/${event._id}/registrations/check`, {
-          method: "GET",
-          headers,
-        });
-
+        const res = await fetch(
+          `${api.BASE_URL || "https://hacthon-stackhack.onrender.com"}/events/${
+            event._id
+          }/registrations/check`,
+          {
+            headers: token ? { Authorization: `Bearer ${token}` } : {},
+          }
+        );
         if (!res.ok) {
-          // 400 means token not provided or server can't check; treat as not registered
-          const text = await res.text().catch(() => "");
-          console.debug("registrations/check returned non-ok:", res.status, text);
           if (mounted) setRegistered(false);
           return;
         }
-
         const data = await res.json();
         if (mounted && data.registered) {
           setRegistered(true);
           setSavedRegistration(data.registration || null);
           setStatusMsg("You have already registered for this event.");
         } else {
-          if (mounted) {
-            setRegistered(false);
-            setSavedRegistration(null);
-          }
+          setRegistered(false);
+          setSavedRegistration(null);
         }
       } catch (err) {
         console.error("Error checking registration:", err);
@@ -168,27 +125,37 @@ export default function EventRegisterForm({ event: propEvent }) {
         if (mounted) setChecking(false);
       }
     })();
-    return () => { mounted = false; };
+    return () => {
+      mounted = false;
+    };
   }, [event, token]);
 
+  /** ✅ Input helpers */
   const setField = (id, v) => setValues((p) => ({ ...p, [id]: v }));
 
   const handleCheckboxToggle = (id, option) => {
     setValues((prev) => {
       const arr = Array.isArray(prev[id]) ? [...prev[id]] : [];
-      if (arr.includes(option)) return { ...prev, [id]: arr.filter((x) => x !== option) };
+      if (arr.includes(option))
+        return { ...prev, [id]: arr.filter((x) => x !== option) };
       arr.push(option);
       return { ...prev, [id]: arr };
     });
   };
 
+  /** ✅ Required validation */
   const validateRequired = () => {
-    const missing = (event.formSchema || []).filter((f) => f.required && (
-      f.type === "checkbox" ? !(Array.isArray(values[f.id]) && values[f.id].length > 0) : !values[f.id]
-    ));
+    const missing = (event.formSchema || []).filter(
+      (f) =>
+        f.required &&
+        (f.type === "checkbox"
+          ? !(Array.isArray(values[f.id]) && values[f.id].length > 0)
+          : !values[f.id])
+    );
     return missing;
   };
 
+  /** ✅ Submit registration */
   const handleSubmit = async (e) => {
     e.preventDefault();
     setErrorMsg("");
@@ -201,90 +168,83 @@ export default function EventRegisterForm({ event: propEvent }) {
 
     const missing = validateRequired();
     if (missing.length) {
-      setErrorMsg("Please fill required fields: " + missing.map(m => m.label).join(", "));
+      setErrorMsg(
+        "Please fill required fields: " + missing.map((m) => m.label).join(", ")
+      );
       return;
     }
 
     setSubmitting(true);
     try {
-      // prefer authoritative student profile from token (server will do same)
       const localStudent = await getLocalStudent();
       const payload = { responses: values, student: localStudent || null };
 
-      const headers = { "Content-Type": "application/json" };
-      if (token) headers.Authorization = `Bearer ${token}`;
-
-      const res = await fetch(`http://localhost:5000/events/${event._id}/register`, {
-        method: "POST",
-        headers,
-        body: JSON.stringify(payload),
-      });
+      const res = await fetch(
+        `${api.BASE_URL || "https://hacthon-stackhack.onrender.com"}/events/${
+          event._id
+        }/register`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify(payload),
+        }
+      );
 
       const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Registration failed");
 
-      if (res.status === 409) {
-        // duplicate - server will return existing registration
-        setRegistered(true);
-        setSavedRegistration(data.registration || null);
-        setStatusMsg(data.message || "Already registered");
-        // still write local marker so StudentHome updates instantly
-        try {
-          localStorage.setItem(`registered_${event._id}`, JSON.stringify(data.registration || { responses: values }));
-        } catch (e) { /* ignore */ }
-        setSubmitting(false);
-        // navigate back so StudentHome shows updated state
-        navigate("/student-home");
-        return;
-      }
-
-      if (!res.ok) {
-        setErrorMsg(data.message || "Registration failed");
-        setSubmitting(false);
-        return;
-      }
-
-      // success
-      const saved = data.registration || { registrationId: data.registrationId, responses: values };
+      // ✅ success
       setRegistered(true);
-      setSavedRegistration(saved);
-      setStatusMsg("Registered successfully!");
-
-      // write a short localStorage marker so StudentHome sees instant result
-      try {
-        localStorage.setItem(`registered_${event._id}`, JSON.stringify(saved));
-      } catch (e) {
-        console.warn("Could not write registered marker", e);
-      }
-
-      setSubmitting(false);
-      // navigate back to student home (so it re-checks and shows Registered). You can change route if needed.
+      setSavedRegistration(data.registration || null);
+      localStorage.setItem(
+        `registered_${event._id}`,
+        JSON.stringify(data.registration || {})
+      );
+      alert("✅ Registration successful!");
       navigate("/student-home");
     } catch (err) {
       console.error("Registration error:", err);
-      setErrorMsg("Network error - try again");
+      setErrorMsg(err.message || "Network error - try again");
+    } finally {
       setSubmitting(false);
     }
   };
 
+  // === RENDER STATES ===
   if (loadingEvent) return <div style={{ padding: 20 }}>Loading event…</div>;
   if (!event) return <div style={{ padding: 20 }}>Event not found.</div>;
+  if (checking)
+    return <div style={{ padding: 20 }}>Checking registration status…</div>;
 
-  // If still checking registration, show small loader
-  if (checking) return <div style={{ padding: 20 }}>Checking registration status…</div>;
-
-  // If already registered, show saved registration read-only
-  if (registered) {
+  // === Registered State ===
+  if (registered)
     return (
-      <div style={{ maxWidth: 900, margin: "20px auto", padding: 16, background: "#fff", borderRadius: 8 }}>
-        <button onClick={() => navigate(-1)} style={{ marginBottom: 12 }}>← Back</button>
+      <div
+        style={{
+          maxWidth: 900,
+          margin: "20px auto",
+          padding: 16,
+          background: "#fff",
+          borderRadius: 8,
+        }}
+      >
+        <button onClick={() => navigate(-1)} style={{ marginBottom: 12 }}>
+          ← Back
+        </button>
         <h3 style={{ marginTop: 0 }}>You’re registered — {event.title}</h3>
-        {statusMsg && <div style={{ color: "green", marginBottom: 12 }}>{statusMsg}</div>}
+        {statusMsg && (
+          <div style={{ color: "green", marginBottom: 12 }}>{statusMsg}</div>
+        )}
 
-        {savedRegistration && savedRegistration.responses ? (
+        {savedRegistration?.responses ? (
           <div style={{ background: "#f7f7f7", padding: 12, borderRadius: 6 }}>
             {Object.entries(savedRegistration.responses).map(([k, v]) => (
               <div key={k} style={{ marginBottom: 8 }}>
-                <strong>{k}:</strong> {Array.isArray(v) ? v.join(", ") : String(v)}
+                <strong>{k}:</strong>{" "}
+                {Array.isArray(v) ? v.join(", ") : String(v)}
               </div>
             ))}
           </div>
@@ -293,24 +253,54 @@ export default function EventRegisterForm({ event: propEvent }) {
         )}
 
         <div style={{ marginTop: 12 }}>
-          <button onClick={() => navigate("/student-home")} style={{ padding: "8px 12px" }}>Go to Events</button>
+          <button
+            onClick={() => navigate("/student-home")}
+            style={{
+              background: "#4f46e5",
+              color: "white",
+              padding: "8px 12px",
+              border: "none",
+              borderRadius: 8,
+            }}
+          >
+            Go to Events
+          </button>
         </div>
       </div>
     );
-  }
 
-  // Not registered -> render the form
+  // === Registration Form ===
   return (
-    <div style={{ maxWidth: 900, margin: "20px auto", padding: 18, background: "#fff", borderRadius: 8 }}>
-      <button onClick={() => navigate(-1)} style={{ marginBottom: 12 }}>← Back</button>
+    <div
+      style={{
+        maxWidth: 900,
+        margin: "20px auto",
+        padding: 18,
+        background: "#fff",
+        borderRadius: 8,
+      }}
+    >
+      <button onClick={() => navigate(-1)} style={{ marginBottom: 12 }}>
+        ← Back
+      </button>
       <h3 style={{ marginTop: 0 }}>Register for — {event.title}</h3>
-      {errorMsg && <div style={{ color: "crimson", marginBottom: 10 }}>{errorMsg}</div>}
-      {statusMsg && <div style={{ color: "green", marginBottom: 10 }}>{statusMsg}</div>}
+      {errorMsg && (
+        <div style={{ color: "crimson", marginBottom: 10 }}>{errorMsg}</div>
+      )}
+      {statusMsg && (
+        <div style={{ color: "green", marginBottom: 10 }}>{statusMsg}</div>
+      )}
 
       <form onSubmit={handleSubmit}>
         {(event.formSchema || []).map((f) => (
           <div key={f.id} style={{ marginBottom: 12 }}>
-            <label style={{ display: "block", fontWeight: 600, marginBottom: 6 }}>
+            <label
+              style={{
+                display: "block",
+                fontWeight: 600,
+                marginBottom: 6,
+              }}
+            >
               {f.label} {f.required && <span style={{ color: "red" }}>*</span>}
             </label>
 
@@ -320,7 +310,12 @@ export default function EventRegisterForm({ event: propEvent }) {
                 value={values[f.id] ?? ""}
                 onChange={(e) => setField(f.id, e.target.value)}
                 required={f.required}
-                style={{ width: "100%", padding: 8, borderRadius: 6, border: "1px solid #ddd" }}
+                style={{
+                  width: "100%",
+                  padding: 8,
+                  borderRadius: 6,
+                  border: "1px solid #ddd",
+                }}
               />
             )}
 
@@ -329,7 +324,13 @@ export default function EventRegisterForm({ event: propEvent }) {
                 value={values[f.id] ?? ""}
                 onChange={(e) => setField(f.id, e.target.value)}
                 required={f.required}
-                style={{ width: "100%", minHeight: 100, padding: 8, borderRadius: 6, border: "1px solid #ddd" }}
+                style={{
+                  width: "100%",
+                  minHeight: 100,
+                  padding: 8,
+                  borderRadius: 6,
+                  border: "1px solid #ddd",
+                }}
               />
             )}
 
@@ -338,24 +339,39 @@ export default function EventRegisterForm({ event: propEvent }) {
                 value={values[f.id] ?? ""}
                 onChange={(e) => setField(f.id, e.target.value)}
                 required={f.required}
-                style={{ width: "100%", padding: 8, borderRadius: 6, border: "1px solid #ddd" }}
+                style={{
+                  width: "100%",
+                  padding: 8,
+                  borderRadius: 6,
+                  border: "1px solid #ddd",
+                }}
               >
                 <option value="">Select...</option>
-                {(f.options || []).map((opt) => <option key={opt} value={opt}>{opt}</option>)}
+                {(f.options || []).map((opt) => (
+                  <option key={opt} value={opt}>
+                    {opt}
+                  </option>
+                ))}
               </select>
             )}
 
             {(f.type === "radio" || f.type === "checkbox") && (
               <div>
                 {(f.options || []).map((opt) => (
-                  <label key={opt} style={{ display: "block", marginBottom: 6 }}>
+                  <label
+                    key={opt}
+                    style={{ display: "block", marginBottom: 6 }}
+                  >
                     <input
                       type={f.type}
                       name={f.id}
                       value={opt}
-                      checked={f.type === "checkbox"
-                        ? Array.isArray(values[f.id]) && values[f.id].includes(opt)
-                        : values[f.id] === opt}
+                      checked={
+                        f.type === "checkbox"
+                          ? Array.isArray(values[f.id]) &&
+                            values[f.id].includes(opt)
+                          : values[f.id] === opt
+                      }
                       onChange={() => {
                         if (f.type === "radio") setField(f.id, opt);
                         else handleCheckboxToggle(f.id, opt);
@@ -370,19 +386,24 @@ export default function EventRegisterForm({ event: propEvent }) {
         ))}
 
         <div style={{ display: "flex", gap: 10 }}>
-          <button type="submit" disabled={submitting} style={{ background: "#003366", color: "#fff", padding: "8px 12px", borderRadius: 8, border: "none" }}>
+          <button
+            type="submit"
+            disabled={submitting}
+            style={{
+              background: "#4f46e5",
+              color: "#fff",
+              padding: "8px 12px",
+              borderRadius: 8,
+              border: "none",
+            }}
+          >
             {submitting ? "Submitting..." : "Submit"}
           </button>
-          <button type="button" onClick={async () => {
-            const s = await getLocalStudent();
-            const init = {};
-            (event.formSchema || []).forEach((f) => {
-              init[f.id] = (s && (s[f.id] ?? s[f.id.toLowerCase()] ?? "")) || (f.type === "checkbox" ? [] : "");
-            });
-            setValues(init);
-            setErrorMsg("");
-            setStatusMsg("");
-          }} style={{ padding: "8px 12px", borderRadius: 8 }}>
+          <button
+            type="button"
+            onClick={() => setValues({})}
+            style={{ padding: "8px 12px", borderRadius: 8 }}
+          >
             Reset
           </button>
         </div>

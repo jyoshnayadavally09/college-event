@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 import FullCalendar from "@fullcalendar/react";
 import dayGridPlugin from "@fullcalendar/daygrid";
 import interactionPlugin from "@fullcalendar/interaction";
+import { api } from "./api"; // ✅ update import path if needed
 
 export default function AdminCalendar() {
   const navigate = useNavigate();
@@ -16,10 +17,8 @@ export default function AdminCalendar() {
       return;
     }
 
-    fetch("http://localhost:5000/events", {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-      .then((res) => res.json())
+    // ✅ Using centralized API function
+    api.getEvents(token)
       .then((data) => {
         const arr = Array.isArray(data) ? data : data.events || [];
         const formatted = arr.map((e) => ({
@@ -47,17 +46,15 @@ export default function AdminCalendar() {
     <div
       style={{
         minHeight: "100vh",
-        minWidth:"100vw",
+        minWidth: "100vw",
         background: "linear-gradient(135deg, #f6f8fc, #e9ecf5)",
         display: "flex",
         justifyContent: "center",
         alignItems: "flex-start",
-       
         paddingTop: "40px",
         paddingBottom: "40px",
       }}
     >
-      {/* === Card Container === */}
       <div
         style={{
           background: "#fff",
@@ -65,11 +62,10 @@ export default function AdminCalendar() {
           boxShadow: "0 8px 30px rgba(0,0,0,0.08)",
           padding: "24px",
           width: "90%",
-          maxWidth: "720px", // ✅ smaller compact width
+          maxWidth: "720px",
           border: "1px solid #e5e7eb",
         }}
       >
-        {/* Header */}
         <div
           style={{
             textAlign: "center",
@@ -98,11 +94,9 @@ export default function AdminCalendar() {
           </p>
         </div>
 
-        {/* Calendar */}
         <div
           style={{
             background: "#fff",
-           
             border: "1px solid #e5e7eb",
             borderRadius: "10px",
             boxShadow: "0 4px 12px rgba(0,0,0,0.05)",
@@ -113,7 +107,6 @@ export default function AdminCalendar() {
             plugins={[dayGridPlugin, interactionPlugin]}
             initialView="dayGridMonth"
             height="auto"
-            width = "300px"
             events={events}
             headerToolbar={{
               left: "prev,next today",
@@ -124,7 +117,6 @@ export default function AdminCalendar() {
           />
         </div>
 
-        {/* Back Button */}
         <div style={{ textAlign: "center", marginTop: "20px" }}>
           <button
             onClick={() => navigate("/adminhome")}

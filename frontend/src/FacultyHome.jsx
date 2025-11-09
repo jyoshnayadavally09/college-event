@@ -1,132 +1,17 @@
-// import React, { useEffect, useState } from "react";
-// import { useNavigate } from "react-router-dom";
-
-// export default function FacultyHome() {
-//   const navigate = useNavigate();
-//   const [events, setEvents] = useState([]);
-//   const token = localStorage.getItem("token");
-//   const username = localStorage.getItem("username");
-//   const role = localStorage.getItem("role");
-
-//   useEffect(() => {
-//     if (!token) {
-//       navigate("/faculty-login");
-//       return;
-//     }
-
-//     fetch("http://localhost:5000/events/my", {
-//       headers: { Authorization: `Bearer ${token}` },
-//     })
-//       .then((res) => res.json())
-//       .then((data) => setEvents(Array.isArray(data) ? data : []))
-//       .catch((err) => console.error("Error loading events:", err));
-//   }, [navigate, token]);
-
-//   const handleLogout = () => {
-//     localStorage.clear();
-//     navigate("/faculty-login");
-//   };
-
-//   const handleCreateAndEdit = async () => {
-//     const title = prompt("Enter title for new event:");
-//     if (!title) return;
-//     try {
-//       const res = await fetch("http://localhost:5000/events/add", {
-//         method: "POST",
-//         headers: {
-//           "Content-Type": "application/json",
-//           Authorization: `Bearer ${token}`,
-//         },
-//         body: JSON.stringify({ title }),
-//       });
-//       const data = await res.json();
-//       if (!res.ok) return alert(data.message || "Failed to create event");
-//       navigate(`/event-form-builder/${data._id}`);
-//     } catch {
-//       alert("Network error creating event");
-//     }
-//   };
-
-//   const handleViewRegistrations = (ev) =>
-//     navigate(`/event-registrations/${ev._id}`);
-
-//   const handleEditForm = (ev) => navigate(`/event-form-builder/${ev._id}`);
-
-//   return (
-//     <>
-//       <style>{`
-//         * { font-family: 'Poppins', sans-serif; }
-//         .navbar { display:flex; justify-content:space-between; align-items:center; background:#003366; padding:15px 30px; color:white; }
-//         .nav-actions { display:flex; gap:12px; }
-//         .btn { padding:8px 15px; border:none; border-radius:6px; cursor:pointer; font-weight:600; }
-//         .btn-create { background:#ffcc00; color:#003366; }
-//         .btn-create:hover { background:#e6b800; }
-//         .btn-logout { background:red; color:white; }
-//         .container { padding:25px; background:#f2f4f8; min-height:100vh; min-width:100vw; }
-//         .events-grid { display:grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap:16px; margin-top:20px; }
-//         .event-card { background:white; padding:18px; border-radius:10px; box-shadow:0 2px 8px rgba(0,0,0,0.08); }
-//       `}</style>
-
-//       <div className="navbar">
-//         <h2>Faculty Dashboard</h2>
-//         <div className="nav-actions">
-//           <button className="btn btn-create" onClick={handleCreateAndEdit}>
-//             + Create Event
-//           </button>
-//           <button className="btn btn-logout" onClick={handleLogout}>
-//             Logout
-//           </button>
-//         </div>
-//       </div>
-
-//       <div className="container">
-//         <h2>Welcome, {username} 👋</h2>
-//         <h3>Your Events</h3>
-
-//         {events.length === 0 ? (
-//           <p>No events found. Create one!</p>
-//         ) : (
-//           <div className="events-grid">
-//             {events.map((ev) => (
-//               <div key={ev._id} className="event-card">
-//                 <h3>{ev.title}</h3>
-//                 <p>
-//                   <b>Status:</b> {ev.status}
-//                 </p>
-//                 <p>
-//                   <b>Branch:</b> {ev.branch || "All"} | <b>Date:</b>{" "}
-//                   {ev.date || "TBA"}
-//                 </p>
-//                 <div>
-//                   <button
-//                     className="btn btn-create"
-//                     onClick={() => handleEditForm(ev)}
-//                   >
-//                     Edit Registration Form
-//                   </button>
-//                   <button
-//                     className="btn"
-//                     style={{ background: "#003366", color: "#fff" }}
-//                     onClick={() => handleViewRegistrations(ev)}
-//                   >
-//                     View Registrations
-//                   </button>
-//                 </div>
-//               </div>
-//             ))}
-//           </div>
-//         )}
-//       </div>
-//     </>
-//   );
-// }
 // src/components/FacultyHome.jsx
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { api } from "./api";
 
 /**
- * FacultyHome — full component with Registrations modal + download XLSX
+ * FacultyHome — event list for faculty with image support and debug overlay.
+ * - Preserves original styles and behaviour.
+ * - Shows image for event if available; falls back to /images/default-event.png.
+ * - Small overlay on the image shows the attempted imgSrc (helps debug missing images).
+ *
+ * NOTE: Put a fallback image at public/images/default-event.png in your React app.
  */
+
 export default function FacultyHome() {
   const navigate = useNavigate();
   const [events, setEvents] = useState([]);
@@ -154,38 +39,114 @@ export default function FacultyHome() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [navigate, token, username, role]);
 
+  const parseDateToMs = (v) => {
+    try {
+      if (!v) return 0;
+      if (typeof v === "number") return v;
+      if (v instanceof Date) return v.getTime();
+      if (typeof v === "object" && v !== null) {
+        if (v.$date) return parseDateToMs(v.$date);
+        if (v.date) return parseDateToMs(v.date);
+      }
+      const d = new Date(v);
+      const t = d.getTime();
+      return isNaN(t) ? 0 : t;
+    } catch {
+      return 0;
+    }
+  };
+
   const loadEvents = async () => {
     try {
-      const res = await fetch("http://localhost:5000/events");
-      if (!res.ok) {
-        const txt = await res.text().catch(() => "");
-        throw new Error(`HTTP ${res.status} - ${txt}`);
-      }
-      const data = await res.json();
+      const data = await api.getEvents(token);
       setRawResponse(data);
       const arr = Array.isArray(data) ? data : data?.events ?? [];
 
       const normalized = (arr || []).map((ev) => {
         const title = ev.title ?? ev.name ?? ev.eventTitle ?? "Untitled event";
         const status = (ev.status ?? ev.state ?? "").toString().trim();
-        const id = ev._id ?? ev.id ?? `${title}-${Math.random().toString(36).slice(2, 8)}`;
+        const id =
+          ev._id ??
+          ev.id ??
+          `${title}-${Math.random().toString(36).slice(2, 8)}`;
+
+        const statusUpdatedAt =
+          ev.statusUpdatedAt ??
+          ev.approvedAt ??
+          ev.updatedAt ??
+          ev.modifiedAt ??
+          ev.statusChangedAt ??
+          ev.status_at ??
+          ev.approved_at ??
+          ev.updated_at ??
+          ev.modified_at ??
+          ev.createdAt ??
+          ev.created_at ??
+          ev._createdAt ??
+          null;
+
+        const statusUpdatedAtMs = parseDateToMs(statusUpdatedAt);
+        const createdAtMs = parseDateToMs(ev.createdAt ?? ev.created_at ?? ev._createdAt ?? ev.date ?? null);
+
+        // tolerant image lookup — add backend-specific keys here if needed
+        const image =
+          ev.imageUrl ??
+          ev.image ??
+          ev.imagePath ??
+          ev.cover ??
+          ev.coverImage ??
+          ev.thumbnail ??
+          ev.thumb ??
+          (ev.__raw && (ev.__raw.image || ev.__raw.cover)) ??
+          null;
+
         return {
           ...ev,
           _id: id,
           title,
           status: status || "Pending",
           statusNormalized: (status || "pending").toLowerCase(),
+          statusUpdatedAt: statusUpdatedAtMs,
+          createdAtMs,
+          image,
           __raw: ev,
         };
       });
 
       // show only events proposed by current faculty (tolerant)
       const myEvents = normalized.filter((ev) => {
-        const proposedBy = ev.proposedBy ?? ev.createdBy ?? ev.creator ?? ev.owner ?? "";
+        const proposedBy =
+          ev.proposedBy ?? ev.createdBy ?? ev.creator ?? ev.owner ?? "";
         const proposedRole = ev.proposedRole ?? ev.role ?? "";
         const byMatch = proposedBy && username ? proposedBy === username : false;
         const roleMatch = proposedRole ? proposedRole === role : true;
         return byMatch && roleMatch;
+      });
+
+      // Sort: recently approved first, then other approved, then by statusUpdatedAt desc, fallback to createdAtMs
+      myEvents.sort((a, b) => {
+        const aNorm = (a.statusNormalized || "").toLowerCase();
+        const bNorm = (b.statusNormalized || "").toLowerCase();
+
+        const aApproved = aNorm === "approved";
+        const bApproved = bNorm === "approved";
+
+        const aRecentlyApproved = aApproved && (a.statusUpdatedAt || 0) > (a.createdAtMs || 0);
+        const bRecentlyApproved = bApproved && (b.statusUpdatedAt || 0) > (b.createdAtMs || 0);
+
+        if (aRecentlyApproved && !bRecentlyApproved) return -1;
+        if (!aRecentlyApproved && bRecentlyApproved) return 1;
+
+        if (aApproved && !bApproved) return -1;
+        if (!aApproved && bApproved) return 1;
+
+        const aStatusAt = a.statusUpdatedAt || 0;
+        const bStatusAt = b.statusUpdatedAt || 0;
+        if (bStatusAt !== aStatusAt) {
+          return bStatusAt - aStatusAt;
+        }
+
+        return (b.createdAtMs || 0) - (a.createdAtMs || 0);
       });
 
       setEvents(myEvents);
@@ -202,50 +163,30 @@ export default function FacultyHome() {
   };
 
   const handleEditForm = (ev) => navigate(`/event-form-builder/${ev._id}`);
-  // Previously handleViewRegistrations navigated to a page — now we fetch and open modal
+
   const handleViewRegistrations = async (ev) => {
     try {
       setLoadingRegs(true);
       setRegistrations([]);
       setSelectedEventForRegs(ev);
       const tok = localStorage.getItem("token");
-      const res = await fetch(`http://localhost:5000/events/${ev._id}/registrations`, {
-        method: "GET",
-        headers: { ...(tok ? { Authorization: `Bearer ${tok}` } : {}) },
-      });
-      if (!res.ok) {
-        const txt = await res.text().catch(() => "");
-        alert("Failed to load registrations: " + (txt || res.status));
-        setLoadingRegs(false);
-        return;
-      }
-      const data = await res.json();
-      // server returns array directly; if wrapped, handle both shapes
+      const data = await api.getRegistrations(ev._id, tok);
       const regs = Array.isArray(data) ? data : data.registrations || [];
       setRegistrations(regs);
       setRegistrationsModalOpen(true);
     } catch (err) {
       console.error("Error fetching registrations:", err);
-      alert("Network error loading registrations");
+      alert("Failed to load registrations. Check console for details.");
     } finally {
       setLoadingRegs(false);
     }
   };
 
-  // Download XLSX (per-event)
   const handleDownloadXlsx = async (ev) => {
-    const token = localStorage.getItem("token");
+    if (!ev) return;
+    const tok = localStorage.getItem("token");
     try {
-      const res = await fetch(`http://localhost:5000/events/${ev._id}/registrations/export-xlsx`, {
-        method: "GET",
-        headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-      });
-      if (!res.ok) {
-        const txt = await res.text().catch(() => "");
-        alert("Failed to download XLSX: " + (txt || res.status));
-        return;
-      }
-      const blob = await res.blob();
+      const blob = await api.exportRegistrations(ev._id, tok);
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
@@ -256,53 +197,47 @@ export default function FacultyHome() {
       window.URL.revokeObjectURL(url);
     } catch (err) {
       console.error("Download error:", err);
-      alert("Network error downloading XLSX");
+      alert("Failed to download XLSX. Check console for details.");
     }
   };
 
-  // Quick create: create pending event but DO NOT open builder
   const handleCreateAndEdit = async () => {
     const title = prompt("Enter a quick title for the new event:");
     if (!title) return;
     try {
       const tok = localStorage.getItem("token");
-      const res = await fetch("http://localhost:5000/events/add", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(tok ? { Authorization: `Bearer ${tok}` } : {}),
-        },
-        body: JSON.stringify({
+      const data = await api.createEvent(
+        {
           title,
           status: "Pending",
           proposedBy: username,
           proposedRole: role,
-        }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        alert(data.message || "Failed to create event");
-        return;
-      }
+        },
+        tok
+      );
       alert(`✅ "${data.title || title}" created — Pending admin approval.`);
+
       const created = {
         ...data,
         _id: data._id ?? data.id ?? `temp-${Math.random().toString(36).slice(2, 9)}`,
         title: data.title ?? title,
         status: data.status ?? "Pending",
         statusNormalized: (data.status ?? "Pending").toLowerCase(),
+        statusUpdatedAt: parseDateToMs(data.statusUpdatedAt ?? data.approvedAt ?? data.updatedAt ?? data.createdAt ?? Date.now()),
+        createdAtMs: parseDateToMs(data.createdAt ?? Date.now()),
         proposedBy: data.proposedBy ?? username,
         proposedRole: data.proposedRole ?? role,
+        image: data.imageUrl ?? data.image ?? null,
         __raw: data,
       };
+
       setEvents((prev) => [created, ...prev]);
     } catch (err) {
       console.error("Network error creating event:", err);
-      alert("Network error creating event");
+      alert("Failed to create event. Check console for details.");
     }
   };
 
-  // Filter/sort/search helpers
   const matchesSearch = (ev) => {
     if (!search) return true;
     const q = search.toLowerCase();
@@ -324,12 +259,12 @@ export default function FacultyHome() {
     .filter(matchesSearch)
     .sort((a, b) => {
       if (sortOrder === "newest") {
-        const da = new Date(a.createdAt || a.date || 0).getTime();
-        const db = new Date(b.createdAt || b.date || 0).getTime();
+        const da = a.createdAtMs || 0;
+        const db = b.createdAtMs || 0;
         return db - da;
       } else {
-        const da = new Date(a.createdAt || a.date || 0).getTime();
-        const db = new Date(b.createdAt || b.date || 0).getTime();
+        const da = a.createdAtMs || 0;
+        const db = b.createdAtMs || 0;
         return da - db;
       }
     });
@@ -349,7 +284,14 @@ export default function FacultyHome() {
     return "status-pill";
   };
 
-  // Helper to robustly format a createdAt value
+  const statusLabel = (s) => {
+    const st = (s || "").toLowerCase();
+    if (st === "approved" || st === "accept" || st === "accepted") return "Accepted";
+    if (st === "rejected" || st === "deny" || st === "declined") return "Rejected";
+    if (st === "pending") return "Pending";
+    return (s || "").charAt(0).toUpperCase() + (s || "").slice(1);
+  };
+
   const formatDate = (d) => {
     try {
       if (!d) return "-";
@@ -442,12 +384,12 @@ export default function FacultyHome() {
           gap:10px;
           min-height:160px;
         }
-        .card .top { display:flex; justify-content:space-between; gap:10px; }
+        .card .top { display:flex; justify-content:space-between; gap:10px; align-items:flex-start; }
         .card .title { font-weight:800; color: #4b2cf7; font-size:16px; }
         .card .meta { color:var(--muted); font-size:13px; margin-top:4px; }
         .card .desc { color:#374151; font-size:14px; line-height:1.35; flex:1; }
 
-        .status-pill { font-weight:800; padding:6px 10px; border-radius:999px; font-size:12px; }
+        .status-pill { font-weight:800; padding:6px 10px; border-radius:999px; font-size:12px; display:inline-block; }
         .status-approved { background:#dcfce7; color:var(--success); }
         .status-pending { background:#fff7ed; color:var(--warning); }
         .status-rejected { background:#fee2e2; color:var(--danger); }
@@ -477,6 +419,26 @@ export default function FacultyHome() {
           min-width:120px;
           font-weight:700;
           text-align:center;
+        }
+
+        .rejected-note {
+          padding:8px 10px;
+          border-radius:8px;
+          background:#fff5f5;
+          color:var(--danger);
+          border:1px solid #fee2e2;
+          font-weight:700;
+        }
+
+        .new-badge {
+          display:inline-block;
+          margin-left:8px;
+          font-weight:800;
+          padding:4px 8px;
+          border-radius:999px;
+          background: linear-gradient(90deg,#fef3c7,#fde68a);
+          color:#92400e;
+          font-size:12px;
         }
 
         @media (max-width:520px) {
@@ -510,10 +472,7 @@ export default function FacultyHome() {
             </div>
 
             <div className="actions">
-              <button className="btn quick" onClick={() => navigate("/faculty-results")}>
-  🏆 Results
-</button>
-
+              <button className="btn quick" onClick={() => navigate("/faculty-results")}>🏆 Results</button>
               <button className="btn create" onClick={() => navigate("/new-event")}>+ Create Event</button>
               <button className="btn quick" onClick={handleCreateAndEdit}>+ Quick Create</button>
               <button className="logout" onClick={handleLogout}>Logout</button>
@@ -534,7 +493,7 @@ export default function FacultyHome() {
                   <strong>{counts.pending}</strong>
                 </div>
                 <div className="stat">
-                  <small>Approved</small>
+                  <small>Accepted</small>
                   <strong>{counts.approved}</strong>
                 </div>
                 <div className="stat">
@@ -547,30 +506,10 @@ export default function FacultyHome() {
             <div style={{ marginTop: 14 }}>
               <div style={{ fontWeight: 800, color: "#111827", marginBottom: 8 }}>Filter</div>
               <div className="filters">
-                <button
-                  className={`filter-btn ${filter === "all" ? "active" : ""}`}
-                  onClick={() => setFilter("all")}
-                >
-                  All
-                </button>
-                <button
-                  className={`filter-btn ${filter === "pending" ? "active" : ""}`}
-                  onClick={() => setFilter("pending")}
-                >
-                  Pending
-                </button>
-                <button
-                  className={`filter-btn ${filter === "approved" ? "active" : ""}`}
-                  onClick={() => setFilter("approved")}
-                >
-                  Approved
-                </button>
-                <button
-                  className={`filter-btn ${filter === "rejected" ? "active" : ""}`}
-                  onClick={() => setFilter("rejected")}
-                >
-                  Rejected
-                </button>
+                <button className={`filter-btn ${filter === "all" ? "active" : ""}`} onClick={() => setFilter("all")}>All</button>
+                <button className={`filter-btn ${filter === "pending" ? "active" : ""}`} onClick={() => setFilter("pending")}>Pending</button>
+                <button className={`filter-btn ${filter === "approved" ? "active" : ""}`} onClick={() => setFilter("approved")}>Accepted</button>
+                <button className={`filter-btn ${filter === "rejected" ? "active" : ""}`} onClick={() => setFilter("rejected")}>Rejected</button>
               </div>
             </div>
           </aside>
@@ -584,10 +523,7 @@ export default function FacultyHome() {
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
               />
-              <select
-                value={sortOrder}
-                onChange={(e) => setSortOrder(e.target.value)}
-              >
+              <select value={sortOrder} onChange={(e) => setSortOrder(e.target.value)}>
                 <option value="newest">Sort: Newest</option>
                 <option value="oldest">Sort: Oldest</option>
               </select>
@@ -612,20 +548,81 @@ export default function FacultyHome() {
               ) : (
                 filteredEvents.map((ev) => {
                   const approved = (ev.statusNormalized || "").toLowerCase() === "approved";
+                  const rejected = (ev.statusNormalized || "").toLowerCase() === "rejected";
+                  const recentlyApproved = approved && (ev.statusUpdatedAt || 0) > (ev.createdAtMs || 0);
+
                   return (
                     <article key={ev._id} className="card">
+                      {/* image container with fallback and debug overlay */}
+                      <div style={{ borderRadius: 10, overflow: "hidden", height: 140, background: "#f3f4f6", position: "relative" }}>
+                        {(() => {
+                          const imgSrc =
+                            ev.image ||
+                            ev.imageUrl ||
+                            ev.imagePath ||
+                            ev.cover ||
+                            (ev.__raw && (ev.__raw.image || ev.__raw.cover)) ||
+                            "/images/default-event.png";
+
+                          return (
+                            <>
+                              <img
+                                src={imgSrc}
+                                alt={ev.title}
+                                style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+                                onError={(e) => {
+                                  try {
+                                    if (e.currentTarget && !e.currentTarget.dataset.failed) {
+                                      console.warn("FacultyHome: image failed to load:", imgSrc, "for event:", ev._id);
+                                      e.currentTarget.dataset.failed = "1";
+                                      e.currentTarget.src = "/images/default-event.png";
+                                    }
+                                  } catch (err) {
+                                    // swallow
+                                  }
+                                }}
+                              />
+                              <div
+                                style={{
+                                  position: "absolute",
+                                  bottom: 6,
+                                  left: 8,
+                                  fontSize: 11,
+                                  background: "rgba(0,0,0,0.45)",
+                                  color: "white",
+                                  padding: "3px 8px",
+                                  borderRadius: 6,
+                                  maxWidth: "calc(100% - 24px)",
+                                  overflow: "hidden",
+                                  textOverflow: "ellipsis",
+                                  whiteSpace: "nowrap",
+                                }}
+                                title={imgSrc}
+                              >
+                                {imgSrc ? (imgSrc.length > 60 ? imgSrc.slice(0, 60) + "…" : imgSrc) : "no image"}
+                              </div>
+                            </>
+                          );
+                        })()}
+                      </div>
+
                       <div className="top">
                         <div style={{ flex: 1 }}>
-                          <div className="title">{ev.title}</div>
+                          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                            <div className="title">{ev.title}</div>
+                            {recentlyApproved && <div className="new-badge">Newly approved</div>}
+                          </div>
                           <div className="meta">{ev.branch || "All branches"}</div>
                         </div>
 
                         <div style={{ textAlign: "right" }}>
-                         <div style={{ fontSize: 13, color: "var(--muted)" }}>
-  📅 {ev.date || "Date: TBA"} <br />
-  🕒 {ev.time || "Time: TBA"}
-</div>
-
+                          <div style={{ marginBottom: 8 }}>
+                            <span className={statusClass(ev.status)}>{statusLabel(ev.status)}</span>
+                          </div>
+                          <div style={{ fontSize: 13, color: "var(--muted)" }}>
+                            📅 {ev.date || "Date: TBA"} <br />
+                            🕒 {ev.time || "Time: TBA"}
+                          </div>
                         </div>
                       </div>
 
@@ -635,19 +632,25 @@ export default function FacultyHome() {
                         <div className="venue">{ev.venue || "Venue: TBA"}</div>
 
                         <div className="btn-group" style={{ justifyContent: "flex-end" }}>
-                          {approved ? (
-                            <button className="btn-small" onClick={() => handleEditForm(ev)}>
-                              {ev.formSchema && ev.formSchema.length ? "Edit Registration Form" : "Create Registration Form"}
-                            </button>
+                          {rejected ? (
+                            <div className="rejected-note">This event was rejected — actions disabled</div>
+                          ) : approved ? (
+                            <>
+                              <button className="btn-small" onClick={() => handleEditForm(ev)}>
+                                {ev.formSchema && ev.formSchema.length ? "Edit Registration Form" : "Create Registration Form"}
+                              </button>
+                              <button className="btn-small" onClick={() => handleViewRegistrations(ev)}>Registrations</button>
+                              <button className="btn-small" onClick={() => handleDownloadXlsx(ev)}>Download Excel</button>
+                              <button className="btn-small" onClick={() => navigate(`/event-details/${ev._id}`)}>Details</button>
+                            </>
                           ) : (
-                            <div className="locked" title="Forms locked until admin approval">
-                              Forms locked — pending approval
-                            </div>
+                            <>
+                              <div className="locked" title="Forms locked until admin approval">Forms locked — pending approval</div>
+                              <button className="btn-small" onClick={() => handleViewRegistrations(ev)}>Registrations</button>
+                              <button className="btn-small" onClick={() => handleDownloadXlsx(ev)}>Download Excel</button>
+                              <button className="btn-small" onClick={() => navigate(`/event-details/${ev._id}`)}>Details</button>
+                            </>
                           )}
-
-                          <button className="btn-small" onClick={() => handleViewRegistrations(ev)}>Registrations</button>
-                          <button className="btn-small" onClick={() => handleDownloadXlsx(ev)}>Download Excel</button>
-                          <button className="btn-small" onClick={() => navigate(`/event-details/${ev._id}`)}>Details</button>
                         </div>
                       </div>
                     </article>
@@ -659,7 +662,7 @@ export default function FacultyHome() {
         </div>
       </div>
 
-      {/* --- Registrations Modal --- */}
+      {/* Registrations Modal */}
       {registrationsModalOpen && (
         <div style={{
           position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)",
@@ -698,7 +701,6 @@ export default function FacultyHome() {
                   {registrations.map((r, idx) => {
                     const sid = String(r._id || r.registrationId || idx);
                     const s = r.student || {};
-                    // server may have flattened studentName/studentEmail fields in some exports
                     const name = s.name || s.fullName || r.studentName || "-";
                     const uname = s.username || r.studentUsername || "-";
                     const email = s.email || r.studentEmail || "-";

@@ -1,7 +1,8 @@
+// src/components/AdminLogin.jsx
 import React, { useEffect, useState } from "react";
-import axios from "axios";
 import { useNavigate } from "react-router-dom";
 
+import { api } from "./api";
 export default function AdminLogin() {
   const [form, setForm] = useState({ username: "", password: "", remember: false });
   const [message, setMessage] = useState({ text: "", type: "" });
@@ -29,12 +30,13 @@ export default function AdminLogin() {
 
     setLoading(true);
     try {
-      const res = await axios.post("http://localhost:5000/admin/login", {
+      const data = await api.adminLogin({
         username: form.username.trim(),
         password: form.password,
       });
-      const token = res?.data?.token;
-      if (!token) throw new Error(res?.data?.message || "Invalid response");
+
+      const token = data?.token;
+      if (!token) throw new Error(data?.message || "Invalid response");
 
       localStorage.setItem("token", token);
       if (form.remember) localStorage.setItem("admin_username", form.username.trim());
@@ -43,10 +45,11 @@ export default function AdminLogin() {
       setMessage({ text: "Login successful.", type: "success" });
       setTimeout(() => navigate("/adminhome"), 500);
     } catch (err) {
-      setMessage({
-        text: err?.response?.data?.message || "Login failed. Please try again.",
-        type: "error",
-      });
+      const text =
+        (err && err.message) ||
+        (err?.response && (err.response.data?.message || err.response.statusText)) ||
+        "Login failed. Please try again.";
+      setMessage({ text, type: "error" });
     } finally {
       setLoading(false);
     }
@@ -154,7 +157,7 @@ const styles = {
     width: "100vw",
     position: "relative",
     backgroundImage:
-      "url('https://images.unsplash.com/photo-1522202176988-66273c2fd55f?auto=format&fit=crop&w=1920&q=80')", // clean office background
+      "url('https://images.unsplash.com/photo-1522202176988-66273c2fd55f?auto=format&fit=crop&w=1920&q=80')",
     backgroundSize: "cover",
     backgroundPosition: "center",
     backgroundRepeat: "no-repeat",
@@ -168,7 +171,7 @@ const styles = {
   overlay: {
     position: "absolute",
     inset: 0,
-    background: "rgba(0,0,0,0.65)", // ✨ subtle dark transparency overlay
+    background: "rgba(0,0,0,0.65)",
     backdropFilter: "blur(3px)",
   },
 
@@ -185,7 +188,7 @@ const styles = {
   card: {
     width: "100%",
     maxWidth: 420,
-    background: "rgba(10, 10, 20, 0.85)", // dark glass
+    background: "rgba(10, 10, 20, 0.85)",
     border: "1px solid rgba(255,255,255,0.08)",
     borderRadius: 16,
     padding: "36px 32px",

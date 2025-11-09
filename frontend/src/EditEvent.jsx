@@ -1,6 +1,6 @@
-// src/components/EditEvent.jsx
 import React, { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
+import { api } from "./api";
 
 export default function EditEvent() {
   const { id } = useParams();
@@ -14,65 +14,72 @@ export default function EditEvent() {
 
   useEffect(() => {
     loadEvent();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // ✅ Load single event from API
   const loadEvent = async () => {
     try {
-      const res = await fetch("http://localhost:5000/events");
-      const all = await res.json();
-      const found = Array.isArray(all)
-        ? all.find((e) => e._id === id)
-        : all.events?.find((e) => e._id === id);
+      const allEvents = await api.getEvents(token);
+      const found = Array.isArray(allEvents)
+        ? allEvents.find((e) => e._id === id)
+        : allEvents?.events?.find((e) => e._id === id);
+
       if (found) {
         setEvent(found);
         setEditDate(found.date || "");
         setEditTime(found.time || "");
+      } else {
+        alert("Event not found!");
+        navigate("/adminhome");
       }
     } catch (err) {
       console.error("Error loading event:", err);
+      alert("Failed to load event details.");
     } finally {
       setLoading(false);
     }
   };
 
+  // ✅ Save updated date/time using centralized API call
   const handleSave = async () => {
+    if (!editDate || !editTime) {
+      alert("Please provide both date and time.");
+      return;
+    }
+
     setSaving(true);
     try {
-      const res = await fetch(
-        `http://localhost:5000/events/update-datetime/${id}`,
-        {
-          method: "PUT",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({ date: editDate, time: editTime }),
-        }
-      );
-
-      const data = await res.json();
-      if (res.ok) {
-        alert("✅ Date & Time updated successfully!");
-        navigate("/adminhome");
-      } else {
-        alert(data.message || "Update failed");
-      }
+      await api.updateEventDateTime(id, { date: editDate, time: editTime }, token);
+      alert("✅ Date & Time updated successfully!");
+      navigate("/adminhome");
     } catch (err) {
-      console.error(err);
-      alert("Network error updating event");
+      console.error("Error updating event:", err);
+      alert(err.message || "Update failed.");
     } finally {
       setSaving(false);
     }
   };
 
-  if (loading) return <div style={{ padding: 20 }}>Loading event...</div>;
-  if (!event) return <div style={{ padding: 20 }}>Event not found.</div>;
+  if (loading)
+    return (
+      <div style={{ padding: 20, textAlign: "center" }}>
+        <h3>Loading event...</h3>
+      </div>
+    );
+
+  if (!event)
+    return (
+      <div style={{ padding: 20, textAlign: "center" }}>
+        <h3>Event not found.</h3>
+      </div>
+    );
 
   return (
     <div
       style={{
         minHeight: "100vh",
-        minWidth:"100vw",
+        minWidth: "100vw",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
@@ -91,9 +98,7 @@ export default function EditEvent() {
           maxWidth: "500px",
         }}
       >
-        <h2 style={{ color: "#0b3d91", marginBottom: "8px" }}>
-          🕒 Modify Event
-        </h2>
+        <h2 style={{ color: "#0b3d91", marginBottom: "8px" }}>🕒 Modify Event</h2>
         <p style={{ color: "#6b7280", marginBottom: "20px" }}>
           Update the date and time for: <strong>{event.title}</strong>
         </p>

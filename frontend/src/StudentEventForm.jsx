@@ -1,5 +1,7 @@
+// src/components/StudentEventForm.jsx
 import React, { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
+import { api } from "./api"; // ✅ Import centralized API helper
 
 export default function StudentEventForm() {
   const { id } = useParams();
@@ -11,15 +13,16 @@ export default function StudentEventForm() {
 
   useEffect(() => {
     loadEvent();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const loadEvent = async () => {
     try {
-      const res = await fetch(`http://localhost:5000/events`);
-      const all = await res.json();
+      // Use centralized API
+      const all = await api.getEvents(token);
       const found = Array.isArray(all)
-        ? all.find((e) => e._id === id)
-        : all.events?.find((e) => e._id === id);
+        ? all.find((e) => String(e._id) === String(id))
+        : (all.events || []).find((e) => String(e._id) === String(id));
       setEvent(found || null);
     } catch (err) {
       console.error("Failed to load event:", err);
@@ -50,32 +53,136 @@ export default function StudentEventForm() {
     reader.readAsDataURL(file);
   };
 
+  // helper: safe save registration into localStorage.registrations
+  const persistLocalRegistration = (regObj) => {
+    try {
+      const raw = localStorage.getItem("registrations") || "[]";
+      const arr = JSON.parse(raw);
+      // normalize to array
+      const regs = Array.isArray(arr) ? arr : [];
+      // avoid duplicates: same event id + username
+      const evId = regObj.eventId ?? regObj.event?._id ?? regObj.event;
+      const exists = regs.find((r) => {
+        const rid = r.eventId ?? r.event?._id ?? r.event;
+        const ruser = r.username ?? r.studentUsername ?? r.student?.username;
+        return String(rid) === String(evId) && String(ruser) === String(regObj.username);
+      });
+      if (!exists) {
+        regs.push(regObj);
+        localStorage.setItem("registrations", JSON.stringify(regs));
+      } else {
+        // update existing entry (e.g., set date/status) in case server returned details
+        const updated = regs.map((r) => {
+          const rid = r.eventId ?? r.event?._id ?? r.event;
+          const ruser = r.username ?? r.studentUsername ?? r.student?.username;
+          if (String(rid) === String(evId) && String(ruser) === String(regObj.username)) {
+            return { ...r, ...regObj };
+          }
+          return r;
+        });
+        localStorage.setItem("registrations", JSON.stringify(updated));
+      }
+    } catch (e) {
+      try {
+        // fallback simple write
+        localStorage.setItem("registrations", JSON.stringify([regObj]));
+      } catch (ee) {
+        console.error("Failed to persist registration locally:", ee);
+      }
+    }
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!event) return;
+
     try {
-      const res = await fetch(`http://localhost:5000/events/${id}/register`, {
+      // Try centralized API first
+      const res = await apiRequest(`/events/${id}/register`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
+        token,
+        body: {
           responses,
           student: { username },
-        }),
+        },
       });
-      const data = await res.json();
-      if (res.ok) {
-        alert("✅ Registration successful!");
-        navigate("/student-home");
-      } else {
-        alert(data.message || "Registration failed");
-      }
+
+      // Prefer server-returned registration object if available
+      // Many backends return { registration } or the created object — try a few shapes
+      const serverReg =
+        res?.registration ??
+        res?.data ??
+        (res && typeof res === "object" && (res.event || res.eventId || res._id) ? res : null);
+
+      const registrationRecord = serverReg
+        ? // normalize server returned object
+          {
+            eventId: serverReg.eventId ?? serverReg.event?._id ?? serverReg.event ?? id,
+            eventTitle: serverReg.eventTitle ?? serverReg.event?.title ?? event.title,
+            date: serverReg.date ?? serverReg.registeredAt ?? serverReg.createdAt ?? new Date().toISOString(),
+            username: serverReg.username ?? serverReg.studentUsername ?? username,
+            status: serverReg.status ?? "Registered",
+            raw: serverReg,
+          }
+        : // fallback record if server didn't return structured object
+          {
+            eventId: id,
+            eventTitle: event.title,
+            date: new Date().toISOString(),
+            username,
+            status: "Registered",
+            responses,
+          };
+
+      // persist to localStorage.registrations so StudentHome can read and mark "Registered"
+      persistLocalRegistration(registrationRecord);
+
+      alert("✅ Registration successful!");
+      // navigate back to student home where StudentHome will re-load events/registrations
+      navigate("/student-home");
     } catch (err) {
       console.error("Error registering:", err);
-      alert("Network error submitting form");
+
+      // If server failed, still persist a local optimistic registration (so UI shows registered)
+      const optimistic = {
+        eventId: id,
+        eventTitle: event?.title ?? "Event",
+        date: new Date().toISOString(),
+        username,
+        status: "Registered (local)",
+        responses,
+      };
+
+      // Ask user whether to save locally when server fails
+      const saveLocal = window.confirm(
+        "Registration request failed (server). Would you like to save your registration locally so it shows as registered in the UI?"
+      );
+      if (saveLocal) {
+        persistLocalRegistration(optimistic);
+        alert("Saved locally. The organizer may not have your registration on the server.");
+        navigate("/student-home");
+      } else {
+        alert(err.message || "Registration failed");
+      }
     }
+  };
+
+  // ✅ Local API wrapper (same logic as in api.js)
+  const apiRequest = async (endpoint, options) => {
+    const BASE_URL = "https://hacthon-stackhack.onrender.com";
+    const url = `${BASE_URL}${endpoint}`;
+    const headers = { "Content-Type": "application/json" };
+    if (options.token) headers.Authorization = `Bearer ${options.token}`;
+
+    const res = await fetch(url, {
+      method: options.method,
+      headers,
+      body: JSON.stringify(options.body),
+    });
+
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.message || res.statusText || "Request failed");
+    return data;
   };
 
   if (!event)
@@ -113,7 +220,6 @@ export default function StudentEventForm() {
           align-items: center;
           padding: 40px 20px;
           background: var(--bg);
-
         }
 
         .form-shell {

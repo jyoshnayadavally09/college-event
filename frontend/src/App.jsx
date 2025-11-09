@@ -18,7 +18,7 @@ import StudentEventForm from "./StudentEventForm";
 import FacultyResults from "./FacultyResults";
 import AdminCalendar from "./AdminCalendar";
 import EditEvent from "./EditEvent";
-
+import StudentProfile from "./StudentProfile"; 
 export default function App() {
   return (
     <Router>
@@ -44,6 +44,7 @@ export default function App() {
         <Route path="/student-login" element={<StudentLogin />} />
         <Route path="/student-register" element={<StudentRegister />} />
         <Route path="/student-home" element={<StudentHome />} />
+         <Route path="/student-profile" element={<StudentProfile />} /> {/* ✅ Profile route */}
         <Route path="/event-form-builder/:eventId" element={<EventFormBuilder />} />
 <Route path="/event-details/:eventId" element={<EventDetails />} />
 <Route path="/student/event-form/:id" element={<StudentEventForm />} />

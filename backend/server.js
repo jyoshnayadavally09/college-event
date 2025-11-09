@@ -8,13 +8,17 @@ require("dotenv").config();
 const fs = require("fs");
 const path = require("path");
 const XLSX = require("xlsx");
-const { time } = require("console");
+
+const multer = require("multer");
 
 const app = express();
-app.use(express.json());
+app.use(express.json({ limit: "8mb" })); // allow reasonably large JSON (for base64 images if used)
 app.use(cors()); // dev: allow all origins
 
-// ensure exports folder exists for Excel files
+// ensure uploads + exports folders exist
+const UPLOADS_DIR = path.join(__dirname, "uploads");
+if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+
 const EXPORTS_DIR = path.join(__dirname, "exports");
 if (!fs.existsSync(EXPORTS_DIR)) fs.mkdirSync(EXPORTS_DIR, { recursive: true });
 
@@ -23,6 +27,30 @@ const MONGO_URI =
   process.env.MONGO_URI ||
   "mongodb+srv://231fa04091_db_user:GHIdLWzMhubN55x2@cluster0.zghyfea.mongodb.net/?retryWrites=true&w=majority";
 const JWT_SECRET = process.env.JWT_SECRET || "sectiona";
+
+// MULTER: disk storage with timestamp to avoid collisions
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, UPLOADS_DIR);
+  },
+  filename: (req, file, cb) => {
+    const safeName = `${Date.now()}-${file.originalname.replace(/\s+/g, "_")}`;
+    cb(null, safeName);
+  },
+});
+const upload = multer({
+  storage,
+  limits: { fileSize: 8 * 1024 * 1024 }, // 8MB
+  fileFilter: (req, file, cb) => {
+    if (!file.mimetype.startsWith("image/")) {
+      return cb(new Error("Only image files are allowed"), false);
+    }
+    cb(null, true);
+  },
+});
+
+// serve uploads statically so frontend can fetch /uploads/<filename>
+app.use("/uploads", express.static(UPLOADS_DIR));
 
 // ======= SCHEMAS / MODELS =======
 const adminSchema = new mongoose.Schema({ username: String, password: String });
@@ -68,11 +96,14 @@ const eventSchema = new mongoose.Schema({
   formSchema: { type: Array, default: [] },
   formLink: { type: String, default: "" },
 
-  // ✅ Results field
+  // Results field
   results: {
     type: [winnerSchema],
     default: [],
   },
+
+  // store uploaded image path (public path like "/uploads/<file>")
+  image: { type: String, default: "" },
 
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now },
@@ -83,7 +114,7 @@ eventSchema.pre("save", function (next) {
   next();
 });
 
-// ✅ Keep this single definition only
+// Models
 const Admin = mongoose.model("Admin", adminSchema, "admin");
 const Faculty = mongoose.model("Faculty", facultySchema, "faculty");
 const Coordinator = mongoose.model("Coordinator", coordinatorSchema, "coordinator");
@@ -210,118 +241,90 @@ app.post("/student/register", async (req, res) => {
 
 // Public: student login (plaintext compare - dev)
 app.post("/student/login", async (req, res) => login(Student, req, res, "Student"));
-// Approve event
-app.put("/admin/approve/:id", async (req, res) => {
-  try {
-    const event = await Event.findByIdAndUpdate(
-      req.params.id,
-      { status: "approved" },
-      { new: true }
-    );
-    res.json({ message: "Event approved successfully", event });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// Reject event
-app.put("/admin/reject/:id", async (req, res) => {
-  try {
-    const event = await Event.findByIdAndUpdate(
-      req.params.id,
-      { status: "rejected" },
-      { new: true }
-    );
-    res.json({ message: "Event rejected", event });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
 
 // ======= EVENTS API =======
 
-// CREATE/ADD EVENT (protected) - Faculty/Admin/Coordinator
-// routes/events.js or server.js
+// Helper to sanitize eventId into a safe string for filenames
+function safeId(evId) {
+  return String(evId).replace(/[^a-zA-Z0-9_-]/g, "_");
+}
 
-app.post("/events/:id/results", async (req, res) => {
-  try {
-    const { winners } = req.body;
-
-    console.log("📩 /events/:id/results request body:", winners);
-    console.log("📩 Event ID:", req.params.id);
-
-    if (!Array.isArray(winners) || winners.length === 0) {
-      console.warn("⚠️ Winners array missing or empty");
-      return res.status(400).json({ message: "Winners array is required" });
+// CREATE/ADD EVENT (protected) - accepts either JSON or multipart/form-data with 'image'
+app.post(
+  "/events/add",
+  (req, res, next) => {
+    // if multipart/form-data -> run multer; else skip
+    const ct = (req.headers["content-type"] || "").toLowerCase();
+    if (ct.includes("multipart/form-data")) {
+      return upload.single("image")(req, res, (err) => {
+        if (err) {
+          console.warn("[/events/add] multer error:", err && err.message ? err.message : err);
+          return res.status(400).json({ message: err.message || "File upload error" });
+        }
+        return next();
+      });
+    } else {
+      return next();
     }
+  },
+  verifyToken,
+  requireAnyRole(["Faculty","Admin","Coordinator"]),
+  async (req, res) => {
+    try {
+      console.log("[/events/add] incoming request from user:", req.user?.username, "role:", req.user?.role);
 
-    const event = await Event.findById(req.params.id);
-    if (!event) {
-      console.warn("⚠️ Event not found:", req.params.id);
-      return res.status(404).json({ message: "Event not found" });
+      // Make a copy of req.body (works for both JSON and multipart fields)
+      const payload = typeof req.body === "object" ? { ...req.body } : {};
+
+      // If multer saved a file, expose a public path
+      if (req.file) {
+        payload.image = `/uploads/${path.basename(req.file.path)}`;
+        console.log("[/events/add] saved file to:", req.file.path, "public:", payload.image);
+      }
+
+      // Normalize title from several possible keys (client may send 'name' or 'eventTitle', etc.)
+      payload.title = (payload.title || payload.name || payload.eventTitle || payload.event_title || payload.event_name || "").toString().trim();
+
+      // Defensive: ensure proposedBy/proposedRole set from token if not present
+      payload.proposedBy = (payload.proposedBy && payload.proposedBy.toString()) || req.user?.username || "unknown";
+      payload.proposedRole = (payload.proposedRole && payload.proposedRole.toString()) || req.user?.role || "unknown";
+      payload.status = payload.status || "Pending";
+
+      // Helpful debug log: show headers and first-level payload keys (avoids spamming full objects)
+      console.log("[/events/add] headers Authorization:", !!req.headers.authorization, "payload keys:", Object.keys(payload));
+
+      if (!payload.title) {
+        console.warn("[/events/add] validation failed - missing title. payload keys:", Object.keys(payload), "payload sample:", payload);
+        return res.status(400).json({ message: "title is required" });
+      }
+
+      const evToSave = {
+        title: payload.title,
+        branch: payload.branch,
+        date: payload.date,
+        closeDate: payload.closeDate,
+        time: payload.time,
+        venue: payload.venue,
+        description: payload.description,
+        type: payload.type,
+        proposedBy: payload.proposedBy,
+        proposedRole: payload.proposedRole,
+        status: payload.status,
+        image: payload.image || payload.imageUrl || payload.imagePath || "",
+        formSchema: Array.isArray(payload.formSchema) ? payload.formSchema : [],
+      };
+
+      const event = await Event.create(evToSave);
+      console.log(`[/events/add] created event _id=${event._id} title="${event.title}" by=${payload.proposedBy}`);
+      return res.status(201).json(event);
+    } catch (err) {
+      console.error("[/events/add] error creating event:", err && err.message ? err.message : err);
+      return res.status(500).json({ message: "Server error creating event", error: err && err.message ? err.message : undefined });
     }
-
-    // Debug current results
-    console.log("📋 Existing event results:", event.results);
-
-    // Save top 5
-    event.results = winners.slice(0, 5);
-    console.log("✅ New results to save:", event.results);
-
-    await event.save();
-
-    res.json({ message: "Results added successfully", event });
-  } catch (err) {
-    console.error("❌ Error saving results:", err);
-    res.status(500).json({
-      message: "Server error saving results",
-      error: err.message || err,
-      stack: err.stack,
-    });
   }
-});
+);
 
-
-
-app.post("/events/add", verifyToken, requireAnyRole(["Faculty","Admin","Coordinator"]), async (req, res) => {
-  try {
-    console.log("[/events/add] incoming request from user:", req.user?.username, "role:", req.user?.role);
-    const payload = { ...req.body };
-
-    payload.proposedBy = payload.proposedBy || req.user?.username || "unknown";
-    payload.proposedRole = payload.proposedRole || req.user?.role || "unknown";
-    payload.status = payload.status || "Pending";
-
-    if (!payload.title || typeof payload.title !== "string" || !payload.title.trim()) {
-      console.warn("[/events/add] validation failed - missing title:", payload);
-      return res.status(400).json({ message: "title is required" });
-    }
-
-    const event = await Event.create(payload);
-    console.log(`[/events/add] created event _id=${event._id} title="${event.title}" by=${payload.proposedBy}`);
-    return res.status(201).json(event);
-  } catch (err) {
-    console.error("[/events/add] error creating event:", err && err.message ? err.message : err);
-    return res.status(500).json({ message: "Server error creating event", error: err && err.message ? err.message : undefined });
-  }
-});
-app.put("/events/update-datetime/:id", async (req, res) => {
-  try {
-    const { date, time } = req.body;
-    const event = await Event.findByIdAndUpdate(
-      req.params.id,
-      { date, time },
-      { new: true }
-    );
-    if (!event) return res.status(404).json({ message: "Event not found" });
-    res.json({ message: "Event updated successfully", event });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Server error" });
-  }
-});
-
-// Legacy create route (protected)
+// Legacy create route (kept for compatibility) - JSON only
 app.post("/events/create", verifyToken, requireAnyRole(["Faculty","Admin","Coordinator"]), async (req, res) => {
   try {
     console.log("[/events/create] incoming request from user:", req.user?.username, "role:", req.user?.role);
@@ -343,6 +346,37 @@ app.post("/events/create", verifyToken, requireAnyRole(["Faculty","Admin","Coord
   }
 });
 
+// Approve event (admin/coordinator) — set approvedAt + approvedBy
+app.put("/admin/approve/:id", verifyToken, requireAnyRole(["Admin","Coordinator"]), async (req, res) => {
+  try {
+    const updated = await Event.findByIdAndUpdate(
+      req.params.id,
+      { status: "Approved", approvedAt: new Date(), approvedBy: req.user?.username || null },
+      { new: true }
+    ).lean();
+    if (!updated) return res.status(404).json({ message: "Event not found" });
+    console.log(`[/admin/approve] ${req.params.id} approvedBy ${req.user?.username}`);
+    return res.json({ message: "Event approved successfully", event: updated });
+  } catch (err) {
+    console.error("/admin/approve:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Reject event (admin/coordinator) — set rejectionReason optionally
+app.put("/admin/reject/:id", verifyToken, requireAnyRole(["Admin","Coordinator"]), async (req, res) => {
+  try {
+    const update = { status: "Rejected", rejectionReason: req.body.rejectionReason || null };
+    const updated = await Event.findByIdAndUpdate(req.params.id, update, { new: true }).lean();
+    if (!updated) return res.status(404).json({ message: "Event not found" });
+    console.log(`[/admin/reject] ${req.params.id} rejectedBy ${req.user?.username}`);
+    return res.json({ message: "Event rejected", event: updated });
+  } catch (err) {
+    console.error("/admin/reject:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Get all events (public)
 app.get("/events", async (req, res) => {
   try {
@@ -354,16 +388,39 @@ app.get("/events", async (req, res) => {
   }
 });
 
-// Admin update event status (protected)
+// Update event status (Admin/Coordinator) - alternate route
 app.put("/events/update/:id", verifyToken, requireAnyRole(["Admin", "Coordinator"]), async (req, res) => {
   try {
-    const updated = await Event.findByIdAndUpdate(req.params.id, { status: req.body.status }, { new: true }).lean();
+    const updatePayload = {};
+    if (req.body.status) updatePayload.status = req.body.status;
+    if (req.body.status && req.body.status.toLowerCase() === "approved") {
+      updatePayload.approvedAt = new Date();
+      updatePayload.approvedBy = req.user?.username || null;
+    }
+    const updated = await Event.findByIdAndUpdate(req.params.id, updatePayload, { new: true }).lean();
     if (!updated) return res.status(404).json({ message: "Event not found" });
-    console.log(`[/events/update] ${req.params.id} status -> ${req.body.status} by ${req.user?.username}`);
+    console.log(`[/events/update] ${req.params.id} -> ${JSON.stringify(updatePayload)} by ${req.user?.username}`);
     return res.json(updated);
   } catch (err) {
     console.error("/events/update:", err);
     return res.status(500).json({ message: "Server error" });
+  }
+});
+
+// Update event datetime (public or protected depending on your flow)
+app.put("/events/update-datetime/:id", async (req, res) => {
+  try {
+    const { date, time } = req.body;
+    const event = await Event.findByIdAndUpdate(
+      req.params.id,
+      { date, time },
+      { new: true }
+    );
+    if (!event) return res.status(404).json({ message: "Event not found" });
+    res.json({ message: "Event updated successfully", event });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Server error" });
   }
 });
 
@@ -395,12 +452,28 @@ app.put("/events/form/:id", verifyToken, requireAnyRole(["Faculty", "Admin", "Co
   }
 });
 
-// ======= REGISTRATIONS (student-facing) =======
+// POST /events/:id/results — save winners
+app.post("/events/:id/results", verifyToken, requireAnyRole(["Faculty", "Admin", "Coordinator"]), async (req, res) => {
+  try {
+    const { winners } = req.body;
+    if (!Array.isArray(winners) || winners.length === 0) {
+      return res.status(400).json({ message: "Winners array is required" });
+    }
 
-// Helper to sanitize eventId into a safe string for collection and filename
-function safeId(evId) {
-  return String(evId).replace(/[^a-zA-Z0-9_-]/g, "_");
-}
+    const event = await Event.findById(req.params.id);
+    if (!event) return res.status(404).json({ message: "Event not found" });
+
+    event.results = winners.slice(0, 5);
+    await event.save();
+
+    res.json({ message: "Results added successfully", event });
+  } catch (err) {
+    console.error("Error saving results:", err);
+    res.status(500).json({ message: "Server error saving results", error: err.message || err });
+  }
+});
+
+// ======= REGISTRATIONS (student-facing) =======
 
 // Enhanced Register for an event (token-aware) + per-event collection + per-event Excel
 app.post("/events/:id/register", async (req, res) => {
@@ -438,74 +511,14 @@ app.post("/events/:id/register", async (req, res) => {
     }
 
     const doc = {
-  eventId,
-  student: student || null,
-  studentUsername: student && student.username
-    ? String(student.username).trim().toLowerCase()
-    : null,
-  responses,
-  createdAt: new Date(),
-};
-
-    // GET /student/profile
-// Returns the current student's profile (requires Bearer token)
-// ✅ FIXED version: /events/:id/registrations/check
-app.get("/events/:id/registrations/check", async (req, res) => {
-  try {
-    const eventId = req.params.id;
-    let username = null;
-
-    // Extract username from JWT token if present
-    const header = req.headers.authorization;
-    if (header && header.startsWith("Bearer ")) {
-      const token = header.split(" ")[1];
-      if (token) {
-        try {
-          const payload = jwt.verify(token, JWT_SECRET);
-          if (payload && payload.username) username = payload.username;
-        } catch (e) {
-          console.warn("Invalid token ignored in /registrations/check");
-        }
-      }
-    }
-
-    // Allow fallback via query param (?username=)
-    username = username || req.query.username || null;
-    if (!username) return res.json({ registered: false, message: "no username provided" });
-
-    // normalize lowercase
-    username = String(username).trim().toLowerCase();
-
-    // query strictly for this username and eventId
-    const collection = mongoose.connection.collection("event_registrations");
-    const existing = await collection.findOne({
       eventId,
-      studentUsername: { $exists: true, $eq: username },
-    });
-
-    // respond clearly
-    if (!existing) return res.json({ registered: false });
-    return res.json({ registered: true, registration: existing });
-  } catch (err) {
-    console.error("/events/:id/registrations/check:", err);
-    return res.status(500).json({ message: "Server error" });
-  }
-});
-
-app.get("/student/profile", verifyToken, async (req, res) => {
-  try {
-    // verifyToken sets req.user = { username, role }
-    if (!req.user || !req.user.username) return res.status(401).json({ message: "Not authenticated" });
-    const username = req.user.username;
-    const student = await Student.findOne({ username }).select("-password -__v").lean();
-    if (!student) return res.status(404).json({ message: "Student not found" });
-    return res.json(student);
-  } catch (err) {
-    console.error("/student/profile:", err && err.message ? err.message : err);
-    return res.status(500).json({ message: "Server error" });
-  }
-});
-
+      student: student || null,
+      studentUsername: student && student.username
+        ? String(student.username).trim().toLowerCase()
+        : null,
+      responses,
+      createdAt: new Date(),
+    };
 
     // 1) insert into central collection (keeps compatibility)
     const centralResult = await centralCollection.insertOne(doc);
@@ -619,16 +632,14 @@ app.get("/events/:id/registrations", verifyToken, requireAnyRole(["Faculty", "Ad
   }
 });
 
-// === CSV export helper & endpoint ===
+// CSV export helper & endpoint
 const toCsv = (rows) => {
   if (!rows || !rows.length) return "";
-  // gather union of response keys
   const fieldSet = new Set();
   rows.forEach(r => {
     if (r.responses && typeof r.responses === "object") {
       Object.keys(r.responses).forEach(k => fieldSet.add(k));
     } else if (typeof r.responses === "string") {
-      // if responses stored as JSON string, try parse
       try {
         const obj = JSON.parse(r.responses);
         Object.keys(obj).forEach(k => fieldSet.add(k));
@@ -685,7 +696,7 @@ app.get("/events/:id/registrations/export", verifyToken, requireAnyRole(["Facult
   }
 });
 
-// ======= XLSX download endpoint (per-event file) =======
+// XLSX download endpoint (per-event file)
 app.get("/events/:id/registrations/export-xlsx", verifyToken, requireAnyRole(["Faculty","Admin","Coordinator"]), async (req, res) => {
   try {
     const eventId = req.params.id;
@@ -699,16 +710,30 @@ app.get("/events/:id/registrations/export-xlsx", verifyToken, requireAnyRole(["F
   }
 });
 
-// ======= Health Check =======
+// ======= STUDENT PROFILE (protected) =======
+app.get("/student/profile", verifyToken, async (req, res) => {
+  try {
+    if (!req.user || !req.user.username) return res.status(401).json({ message: "Not authenticated" });
+    const username = req.user.username;
+    const student = await Student.findOne({ username }).select("-password -__v").lean();
+    if (!student) return res.status(404).json({ message: "Student not found" });
+    return res.json(student);
+  } catch (err) {
+    console.error("/student/profile:", err && err.message ? err.message : err);
+    return res.status(500).json({ message: "Server error" });
+  }
+});
+
+// Health check
 app.get("/health", (req, res) => {
   const up = mongoose.connection.readyState === 1;
   res.json({ ok: up, dbState: mongoose.connection.readyState });
 });
 
-// ======= FALLBACK =======
+// Fallback
 app.use((req, res) => {
   res.status(404).json({ message: "Not found" });
 });
 
-// ======= START SERVER =======
+// Start
 app.listen(PORT, () => console.log(`🚀 Server running on http://localhost:${PORT}`));

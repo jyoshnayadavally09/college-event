@@ -1,5 +1,7 @@
+// src/components/FacultyLogin.jsx
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { api } from "./api"; // ✅ Import centralized API
 
 export default function FacultyLogin() {
   const [username, setUsername] = useState("");
@@ -8,36 +10,27 @@ export default function FacultyLogin() {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
+  // ✅ Login function using centralized API
   const handleLogin = async (e) => {
     e.preventDefault();
     setError("");
     setLoading(true);
 
     try {
-      const res = await fetch("http://localhost:5000/faculty/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, password }),
-      });
-
-      const data = await res.json();
+      // call via centralized request helper
+      const data = await api.facultyLogin({ username, password });
       setLoading(false);
 
-      if (!res.ok || data.message) {
-        setError(data.message || "Invalid username or password");
-        return;
-      }
-
-      // store token and user info
+      // Save to localStorage
       localStorage.setItem("token", data.token);
       localStorage.setItem("username", data.username || username);
       localStorage.setItem("role", data.role || "faculty");
 
-      // navigate to faculty area
+      alert("✅ Login successful!");
       navigate("/faculty-home");
     } catch (err) {
-      console.error(err);
-      setError("Something went wrong. Please try again later.");
+      console.error("Login error:", err);
+      setError(err.message || "Invalid username or password");
       setLoading(false);
     }
   };
@@ -53,7 +46,8 @@ export default function FacultyLogin() {
         alignItems: "center",
         padding: "20px",
         overflow: "hidden",
-        fontFamily: '"Poppins", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+        fontFamily:
+          '"Poppins", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
       }}
     >
       {/* Background Image */}
@@ -73,7 +67,7 @@ export default function FacultyLogin() {
         }}
       />
 
-      {/* Overlay for transparency */}
+      {/* Overlay */}
       <div
         style={{
           position: "absolute",
@@ -100,10 +94,23 @@ export default function FacultyLogin() {
           color: "#fff",
         }}
       >
-        <h2 style={{ textAlign: "center", fontWeight: 700, fontSize: "1.8rem", margin: 0 }}>
+        <h2
+          style={{
+            textAlign: "center",
+            fontWeight: 700,
+            fontSize: "1.8rem",
+            margin: 0,
+          }}
+        >
           🧑‍🏫 Faculty Login
         </h2>
-        <p style={{ textAlign: "center", opacity: 0.85, marginBottom: "18px" }}>
+        <p
+          style={{
+            textAlign: "center",
+            opacity: 0.85,
+            marginBottom: "18px",
+          }}
+        >
           Login to your Vignan Faculty account
         </p>
 
@@ -126,7 +133,14 @@ export default function FacultyLogin() {
 
         <form onSubmit={handleLogin}>
           <div style={{ marginBottom: "14px" }}>
-            <label style={{ display: "block", marginBottom: "6px", fontSize: ".95rem", color: "#e6eef8" }}>
+            <label
+              style={{
+                display: "block",
+                marginBottom: "6px",
+                fontSize: ".95rem",
+                color: "#e6eef8",
+              }}
+            >
               Username
             </label>
             <input
@@ -143,14 +157,20 @@ export default function FacultyLogin() {
                 background: "rgba(255,255,255,0.03)",
                 color: "#fff",
                 outline: "none",
-                boxSizing: "border-box",
                 fontSize: 14,
               }}
             />
           </div>
 
           <div style={{ marginBottom: "20px" }}>
-            <label style={{ display: "block", marginBottom: "6px", fontSize: ".95rem", color: "#e6eef8" }}>
+            <label
+              style={{
+                display: "block",
+                marginBottom: "6px",
+                fontSize: ".95rem",
+                color: "#e6eef8",
+              }}
+            >
               Password
             </label>
             <input
@@ -167,7 +187,6 @@ export default function FacultyLogin() {
                 background: "rgba(255,255,255,0.03)",
                 color: "#fff",
                 outline: "none",
-                boxSizing: "border-box",
                 fontSize: 14,
               }}
             />
@@ -192,17 +211,6 @@ export default function FacultyLogin() {
             {loading ? "Logging in..." : "Login"}
           </button>
         </form>
-
-        <p
-          style={{
-            textAlign: "center",
-            marginTop: "16px",
-            fontSize: "0.95rem",
-            color: "#dbeafe",
-          }}
-        >
-         
-        </p>
       </div>
     </div>
   );

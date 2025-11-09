@@ -1,6 +1,7 @@
 // src/components/EventFormBuilder.jsx
 import React, { useEffect, useState, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
+import { api } from "./api";
 
 const FIELD_TYPES = [
   { id: "text", label: "Short answer" },
@@ -33,14 +34,13 @@ export default function EventFormBuilder() {
 
   useEffect(() => {
     if (!eventId) return;
-    fetch("http://localhost:5000/events")
-      .then((r) => r.json())
-      .then((arr) => {
-        const ev = Array.isArray(arr) ? arr.find((e) => (e._id ?? e.id) === eventId) : null;
-        if (ev) {
-          setEvent(ev);
-          setSchema(ev.formSchema ?? []);
-        }
+    const token = localStorage.getItem("token");
+
+    api
+      .getEvent(eventId, token)
+      .then((ev) => {
+        setEvent(ev);
+        setSchema(ev.formSchema ?? []);
       })
       .catch(() => setError("Failed to load event"));
   }, [eventId]);
@@ -48,22 +48,12 @@ export default function EventFormBuilder() {
   const addQuestion = (type = "text") => setSchema((s) => [...s, { ...blankField(), type }]);
   const updateQuestion = (id, patch) => setSchema((s) => s.map((q) => (q.id === id ? { ...q, ...patch } : q)));
   const removeQuestion = (id) => setSchema((s) => s.filter((q) => q.id !== id));
-  const moveQuestion = (id, dir) =>
-    setSchema((s) => {
-      const i = s.findIndex((q) => q.id === id);
-      const to = i + dir;
-      if (i < 0 || to < 0 || to >= s.length) return s;
-      const copy = [...s];
-      const [item] = copy.splice(i, 1);
-      copy.splice(to, 0, item);
-      return copy;
-    });
 
   const saveSchema = async () => {
     setSaving(true);
+    const token = localStorage.getItem("token");
     try {
-      const token = localStorage.getItem("token");
-      const res = await fetch(`http://localhost:5000/events/${eventId}/form-schema`, {
+      const res = await fetch(`https://hacthon-stackhack.onrender.com/events/${eventId}/form-schema`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
@@ -71,6 +61,7 @@ export default function EventFormBuilder() {
         },
         body: JSON.stringify({ formSchema: schema }),
       });
+
       const data = await res.json();
       setSaving(false);
       if (!res.ok) return setError(data.message || "Save failed");
@@ -85,7 +76,7 @@ export default function EventFormBuilder() {
 
   return (
     <div className="form-builder">
-      <style>{`
+       <style>{`
         :root {
           --bg:#f8fafc;
           --paper:#fff;
@@ -238,9 +229,7 @@ export default function EventFormBuilder() {
         {/* Left Side: Builder */}
         <div className="card">
           <h2 className="title">{event ? `Form — ${event.title}` : "Event Form Builder"}</h2>
-          <p className="subtitle">
-            Build a custom registration form for your event. Live preview is shown on the right.
-          </p>
+          <p className="subtitle">Build a custom registration form for your event. Live preview is shown on the right.</p>
 
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 18 }}>
             {FIELD_TYPES.map((f) => (
@@ -264,16 +253,13 @@ export default function EventFormBuilder() {
                 onChange={(e) => updateQuestion(q.id, { label: e.target.value })}
                 placeholder="Question title (e.g., Full Name)"
               />
-
               <select
                 style={{ marginTop: 10 }}
                 value={q.type}
                 onChange={(e) => updateQuestion(q.id, { type: e.target.value, options: [] })}
               >
                 {FIELD_TYPES.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.label}
-                  </option>
+                  <option key={t.id} value={t.id}>{t.label}</option>
                 ))}
               </select>
 
@@ -305,11 +291,7 @@ export default function EventFormBuilder() {
                       />
                       <button
                         className="btn btn-ghost"
-                        onClick={() =>
-                          updateQuestion(q.id, {
-                            options: q.options.filter((_, i) => i !== oi),
-                          })
-                        }
+                        onClick={() => updateQuestion(q.id, { options: q.options.filter((_, i) => i !== oi) })}
                       >
                         ❌
                       </button>
@@ -327,9 +309,7 @@ export default function EventFormBuilder() {
                   />
                   Required
                 </label>
-                <button className="btn btn-ghost" onClick={() => removeQuestion(q.id)}>
-                  Remove
-                </button>
+                <button className="btn btn-ghost" onClick={() => removeQuestion(q.id)}>Remove</button>
               </div>
             </div>
           ))}
@@ -340,9 +320,7 @@ export default function EventFormBuilder() {
               <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
                 <button
                   className="btn btn-ghost"
-                  onClick={() =>
-                    navigator.clipboard.writeText(JSON.stringify(schema, null, 2))
-                  }
+                  onClick={() => navigator.clipboard.writeText(JSON.stringify(schema, null, 2))}
                 >
                   Export JSON
                 </button>
@@ -358,26 +336,19 @@ export default function EventFormBuilder() {
         <div className="card preview">
           <h3>📋 Live Preview</h3>
           {previewSchema.length === 0 && <p style={{ color: "var(--muted)" }}>No questions to preview</p>}
-
           {previewSchema.map((q, i) => (
             <div key={q.id} style={{ marginBottom: 16 }}>
               <label>
                 {i + 1}. {q.label} {q.required && <span style={{ color: "crimson" }}>*</span>}
               </label>
 
-              {["text", "email", "number", "date"].includes(q.type) && (
-                <input type={q.type} readOnly />
-              )}
+              {["text", "email", "number", "date"].includes(q.type) && <input type={q.type} readOnly />}
               {q.type === "textarea" && <textarea rows={3} readOnly />}
-              {q.type === "file" && (
-                <input type="file" accept="image/*" disabled />
-              )}
+              {q.type === "file" && <input type="file" accept="image/*" disabled />}
               {q.type === "select" && (
                 <select disabled>
                   <option>Select...</option>
-                  {(q.options || []).map((o, oi) => (
-                    <option key={oi}>{o}</option>
-                  ))}
+                  {(q.options || []).map((o, oi) => <option key={oi}>{o}</option>)}
                 </select>
               )}
               {q.type === "radio" &&

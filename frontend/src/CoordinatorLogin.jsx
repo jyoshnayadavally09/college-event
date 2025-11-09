@@ -1,35 +1,64 @@
-import React, { useState } from "react";
+// src/components/CoordinatorLogin.jsx
+import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
 
 export default function CoordinatorLogin() {
-  const [form, setForm] = useState({ username: "", password: "" });
-  const [error, setError] = useState("");
   const navigate = useNavigate();
+  const [form, setForm] = useState({ username: "", password: "", remember: false });
+  const [loading, setLoading] = useState(false);
+  const [showPwd, setShowPwd] = useState(false);
+  const [error, setError] = useState("");
+
+  const BASE_URL = "https://hacthon-stackhack.onrender.com";
+  // const BASE_URL = "http://localhost:5000";
+
+  useEffect(() => {
+    const saved = localStorage.getItem("coordinator_username");
+    if (saved) setForm((f) => ({ ...f, username: saved, remember: true }));
+  }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
+
+    if (!form.username.trim() || !form.password) {
+      setError("Please enter both username and password.");
+      return;
+    }
+
+    setLoading(true);
     try {
-      const res = await axios.post("http://localhost:5000/coordinator/login", form);
+      const res = await axios.post(`${BASE_URL}/coordinator/login`, form, {
+        headers: { "Content-Type": "application/json" },
+      });
+
       if (res.data.token) {
         localStorage.setItem("username", res.data.username);
-        localStorage.setItem("role", "coordinator");
+        localStorage.setItem("role", "Coordinator");
         localStorage.setItem("token", res.data.token);
+
+        if (form.remember)
+          localStorage.setItem("coordinator_username", form.username.trim());
+        else localStorage.removeItem("coordinator_username");
+
         alert("✅ Login successful");
         navigate("/coordinatorhome");
       } else {
         setError(res.data.message || "Invalid credentials");
       }
     } catch (err) {
-      setError(err.response?.data?.message || "Server error");
+      console.error("Login error:", err);
+      setError(err.response?.data?.message || "Server error during login");
+    } finally {
+      setLoading(false);
     }
   };
 
   return (
-    <div className="coordinator-login-page">
+    <div className="coord-login-page">
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap');
 
         * {
           margin: 0;
@@ -39,158 +68,232 @@ export default function CoordinatorLogin() {
 
         html, body, #root {
           height: 100%;
-          width: 100%;
           font-family: 'Poppins', sans-serif;
+        }
+
+        .coord-login-page {
+          height: 100vh;
+          width: 100vw;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          background: linear-gradient(rgba(0, 0, 0, 0.8), rgba(0,0,0,0.85)),
+            url('https://images.unsplash.com/photo-1556761175-4b46a572b786?auto=format&fit=crop&w=1920&q=80');
+          background-size: cover;
+          background-position: center;
+          background-repeat: no-repeat;
+          position: relative;
           overflow: hidden;
         }
 
-       .coordinator-login-page {
-  height: 100vh;
-  width: 100vw;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  position: relative;
-  overflow: hidden;
-  background-image: linear-gradient(
-      rgba(0, 0, 0, 0.6),
-      rgba(0, 0, 0, 0.6)
-    ),
-    url("https://images.unsplash.com/photo-1522202176988-66273c2fd55f?auto=format&fit=crop&w=1920&q=80");
-  background-size: cover;
-  background-position: center;
-  background-repeat: no-repeat;
-  background-attachment: fixed;
-  filter: brightness(0.9);
-}
-
-/* OPTIONAL: soft blur for aesthetic depth */
-.coordinator-login-page::after {
-  content: "";
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  backdrop-filter: blur(8px);
-  z-index: 0;
-}
-        /* === LOGIN CARD === */
-        .login-box {
-          position: relative;
-          z-index: 2;
-          background: rgba(255, 255, 255, 0.08);
-          border-radius: 20px;
-          padding: 50px 45px;
-          max-width: 400px;
+        .login-card {
+          background: rgba(20, 20, 20, 0.7);
+          backdrop-filter: blur(12px);
+          border-radius: 16px;
+          padding: 45px 35px;
           width: 90%;
-          text-align: center;
-          border: 1px solid rgba(255, 255, 255, 0.15);
-          box-shadow: 0 0 25px rgba(255, 255, 255, 0.08),
-                      0 0 60px rgba(255, 255, 255, 0.05);
+          max-width: 420px;
+          color: #fff;
+          box-shadow: 0 0 25px rgba(124,58,237,0.2), 0 0 45px rgba(6,182,212,0.15);
+          border: 1px solid rgba(255,255,255,0.08);
           animation: fadeIn 1s ease-in-out;
+          z-index: 1;
+          text-align: center;
         }
 
         @keyframes fadeIn {
-          from { opacity: 0; transform: translateY(25px) scale(0.95); }
-          to { opacity: 1; transform: translateY(0) scale(1); }
+          from { opacity: 0; transform: translateY(20px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+
+        .login-logo {
+          width: 70px;
+          height: 70px;
+          border-radius: 14px;
+          background: linear-gradient(135deg, #06b6d4, #7c3aed);
+          margin: 0 auto 15px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-weight: 800;
+          font-size: 22px;
+          color: #fff;
+          box-shadow: 0 0 20px rgba(124,58,237,0.25);
         }
 
         .login-title {
-  font-size: 2.2rem;
-  font-weight: 600;
-  color: #f8f9ff;
-  margin-bottom: 20px;
-  letter-spacing: 1px;
-  text-shadow: 0 0 6px rgba(173, 216, 230, 0.4),
-               0 0 12px rgba(147, 112, 219, 0.35);
-}
+          font-size: 1.9rem;
+          font-weight: 700;
+          margin-bottom: 25px;
+          color: #f1f5f9;
+          text-shadow: 0 0 8px rgba(124,58,237,0.3);
+        }
 
-        /* === INPUT FIELDS === */
+        .input-label {
+          text-align: left;
+          display: block;
+          font-size: 0.9rem;
+          margin-bottom: 6px;
+          color: #cbd5e1;
+        }
+
         .login-input {
           width: 100%;
-          padding: 12px 15px;
+          padding: 12px 14px;
           margin-bottom: 18px;
-          border-radius: 10px;
           border: none;
-          background: rgba(255, 255, 255, 0.12);
+          border-radius: 10px;
+          background: rgba(255,255,255,0.08);
           color: #fff;
           font-size: 1rem;
           outline: none;
           transition: all 0.3s ease;
         }
 
-        .login-input::placeholder {
-          color: #aaa;
-        }
-
         .login-input:focus {
-          background: rgba(255, 255, 255, 0.22);
-          box-shadow: 0 0 12px rgba(180, 220, 255, 0.5);
+          background: rgba(255,255,255,0.15);
+          box-shadow: 0 0 12px rgba(6,182,212,0.4);
         }
 
-        /* === LOGIN BUTTON === */
+        .pwd-container {
+          position: relative;
+        }
+
+        .toggle-btn {
+          position: absolute;
+          right: 12px;
+          top: 10px;
+          background: transparent;
+          border: none;
+          color: #8b5cf6;
+          font-weight: 600;
+          cursor: pointer;
+        }
+
         .login-btn {
           width: 100%;
           padding: 12px;
+          margin-top: 5px;
           border: none;
           border-radius: 10px;
-          background: linear-gradient(135deg, #7b2ff7, #f107a3);
-          color: #ffffff;
-          font-weight: 600;
+          background: linear-gradient(135deg, #06b6d4, #7c3aed);
+          color: #fff;
           font-size: 1.1rem;
+          font-weight: 700;
           cursor: pointer;
-          letter-spacing: 0.5px;
           transition: all 0.3s ease;
-          box-shadow: 0 0 15px rgba(123, 47, 247, 0.4);
+          box-shadow: 0 0 20px rgba(6,182,212,0.2);
         }
 
         .login-btn:hover {
           transform: translateY(-2px);
-          box-shadow: 0 0 25px rgba(241, 7, 163, 0.6);
+          box-shadow: 0 0 30px rgba(124,58,237,0.5);
         }
 
-        /* === ERROR TEXT === */
+        .remember-row {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          font-size: 0.85rem;
+          color: #cbd5e1;
+          margin-top: 10px;
+        }
+
         .error-text {
-          margin-top: 12px;
-          color: #ff5c5c;
-          font-size: 0.9rem;
+          margin-top: 14px;
+          color: #f87171;
+          background: rgba(239,68,68,0.12);
+          padding: 8px;
+          border-radius: 8px;
+          font-weight: 500;
+        }
+
+        .spinner {
+          width: 18px;
+          height: 18px;
+          border: 3px solid rgba(255,255,255,0.25);
+          border-top-color: #fff;
+          border-radius: 50%;
+          animation: spin 0.9s linear infinite;
+          display: inline-block;
+        }
+
+        @keyframes spin {
+          to { transform: rotate(360deg); }
         }
 
         @media (max-width: 480px) {
-          .login-box {
+          .login-card {
             padding: 35px 25px;
           }
           .login-title {
-            font-size: 1.8rem;
+            font-size: 1.6rem;
           }
         }
       `}</style>
 
-      <div className="login-box">
+      <div className="login-card">
+        <div className="login-logo">VE</div>
         <h1 className="login-title">Coordinator Login</h1>
 
         <form onSubmit={handleSubmit}>
+          <label className="input-label">Username</label>
           <input
             type="text"
-            placeholder="Username"
+            placeholder="Enter username"
             className="login-input"
             value={form.username}
             onChange={(e) => setForm({ ...form, username: e.target.value })}
             required
           />
 
-          <input
-            type="password"
-            placeholder="Password"
-            className="login-input"
-            value={form.password}
-            onChange={(e) => setForm({ ...form, password: e.target.value })}
-            required
-          />
+          <label className="input-label">Password</label>
+          <div className="pwd-container">
+            <input
+              type={showPwd ? "text" : "password"}
+              placeholder="Enter password"
+              className="login-input"
+              value={form.password}
+              onChange={(e) => setForm({ ...form, password: e.target.value })}
+              required
+            />
+            <button
+              type="button"
+              className="toggle-btn"
+              onClick={() => setShowPwd(!showPwd)}
+            >
+              {showPwd ? "Hide" : "Show"}
+            </button>
+          </div>
 
-          <button type="submit" className="login-btn">
-            Login
+          <div className="remember-row">
+            <label>
+              <input
+                type="checkbox"
+                checked={form.remember}
+                onChange={(e) =>
+                  setForm({ ...form, remember: e.target.checked })
+                }
+              />{" "}
+              Remember me
+            </label>
+            <button
+              type="button"
+              style={{
+                background: "transparent",
+                border: "none",
+                color: "#818cf8",
+                cursor: "pointer",
+                fontWeight: 600,
+              }}
+              onClick={() => alert("Contact admin to reset password.")}
+            >
+              Forgot?
+            </button>
+          </div>
+
+          <button className="login-btn" type="submit" disabled={loading}>
+            {loading ? <span className="spinner" /> : "Login"}
           </button>
 
           {error && <p className="error-text">{error}</p>}
